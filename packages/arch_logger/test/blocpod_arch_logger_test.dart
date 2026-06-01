@@ -16,10 +16,7 @@ void main() {
 
       final entry = sink.entries.single;
       expect(entry.level, BlocpodLogLevel.info);
-      expect(
-        entry.message,
-        'CounterController IncrementEvent loading->data 12ms',
-      );
+      expect(entry.message, 'CounterController IncrementEvent loading->data 12ms');
       expect(entry.timestamp, record.startedAt);
       expect(entry.metadata, <String, Object?>{
         'traceId': record.traceContext.traceId,
@@ -63,20 +60,14 @@ void main() {
       final logger = BlocpodEventLogger(sink);
       final record = eventRecord(
         useRootTraceContext: true,
-        metadata: const <String, Object?>{
-          'parentSpanId': 'fake',
-          'feature': 'counter',
-        },
+        metadata: const <String, Object?>{'parentSpanId': 'fake', 'feature': 'counter'},
       );
 
       logger.log(record);
 
       final metadata = sink.entries.single.metadata;
       expect(record.traceContext.parentSpanId, isNull);
-      expect(
-        metadata.containsKey('parentSpanId') ? metadata['parentSpanId'] : null,
-        isNull,
-      );
+      expect(metadata.containsKey('parentSpanId') ? metadata['parentSpanId'] : null, isNull);
       expect(metadata['feature'], 'counter');
     });
 
@@ -126,12 +117,8 @@ EventLogRecord eventRecord({
   bool useRootTraceContext = false,
 }) {
   final startedAt = DateTime.utc(2026, 6, 1, 9, 30);
-  final rootTraceContext = TraceContext.root(
-    startedAt: startedAt.subtract(const Duration(milliseconds: 1)),
-  );
-  final traceContext = useRootTraceContext
-      ? rootTraceContext
-      : rootTraceContext.child(startedAt: startedAt);
+  final rootTraceContext = TraceContext.root(startedAt: startedAt.subtract(const Duration(milliseconds: 1)));
+  final traceContext = useRootTraceContext ? rootTraceContext : rootTraceContext.child(startedAt: startedAt);
 
   return EventLogRecord(
     traceContext: traceContext,
