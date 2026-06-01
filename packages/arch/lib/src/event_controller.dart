@@ -1,6 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'event_log_record.dart';
+import 'event_logger.dart';
+import 'trace_context.dart';
+
 /// Public dispatch boundary for event-driven controllers.
 abstract class EventController<E> {
   /// Dispatches [event] through the controller.
@@ -13,12 +17,67 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
   @override
   Future<void> dispatch(E event) async {
     await future;
-    await onEvent(event);
+
+    final before = state;
+    final startedAt = DateTime.now().toUtc();
+    final parentTraceContext = TraceContext.current;
+    final traceContext = parentTraceContext == null
+        ? TraceContext.root(startedAt: startedAt)
+        : parentTraceContext.child(startedAt: startedAt);
+    Object? error;
+    StackTrace? stackTrace;
+
+    try {
+      await TraceContext.run(traceContext, () async {
+        await onEvent(event);
+      });
+    } catch (caughtError, caughtStackTrace) {
+      error = caughtError;
+      stackTrace = caughtStackTrace;
+      Error.throwWithStackTrace(caughtError, caughtStackTrace);
+    } finally {
+      final after = state;
+      _logSafely(
+        EventLogRecord(
+          traceContext: traceContext,
+          controllerName: controllerName,
+          eventName: eventName(event),
+          startedAt: startedAt,
+          duration: DateTime.now().toUtc().difference(startedAt),
+          beforeStateKind: asyncValueKindOf(before),
+          afterStateKind: asyncValueKindOf(after),
+          hasChanged: before != after,
+          error: error,
+          stackTrace: stackTrace,
+          metadata: metadataFor(event),
+        ),
+      );
+    }
   }
 
   /// Handles one dispatched event.
   @protected
   Future<void> onEvent(E event);
+
+  /// Name recorded for this controller.
+  @protected
+  String get controllerName => runtimeType.toString();
+
+  /// Name recorded for [event].
+  @protected
+  String eventName(E event) => event.runtimeType.toString();
+
+  /// Additional structured metadata recorded for [event].
+  @protected
+  Map<String, Object?> metadataFor(E event) => const {};
+
+  void _logSafely(EventLogRecord record) {
+    try {
+      ref.read(eventLoggerProvider).log(record);
+    } catch (_) {
+      // Logging must never affect application flow.
+    }
+  }
 }
 
 /// Dispatch helper for providers and other non-widget Riverpod code.
