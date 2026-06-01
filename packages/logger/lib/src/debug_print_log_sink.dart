@@ -46,17 +46,37 @@ String formatBlocpodLogEntry(BlocpodLogEntry entry) {
 Map<String, Object?> _safeMetadata(Map<String, Object?> metadata) {
   final safe = <String, Object?>{};
   for (final MapEntry(:key, :value) in metadata.entries) {
-    final normalized = key.toLowerCase();
-    final isSensitive =
-        normalized.contains('token') ||
-        normalized.contains('secret') ||
-        normalized.contains('credential') ||
-        normalized.contains('password');
-
-    if (!isSensitive) {
-      safe[key] = value;
+    if (!_isSensitiveKey(key)) {
+      safe[key] = _safeValue(value);
     }
   }
 
   return safe;
+}
+
+Object? _safeValue(Object? value) {
+  if (value is Map) {
+    final safe = <Object?, Object?>{};
+    for (final MapEntry(:key, :value) in value.entries) {
+      if (!_isSensitiveKey(key)) {
+        safe[key] = _safeValue(value);
+      }
+    }
+
+    return safe;
+  }
+
+  if (value is Iterable) {
+    return value.map(_safeValue).toList(growable: false);
+  }
+
+  return value;
+}
+
+bool _isSensitiveKey(Object? key) {
+  final normalized = key.toString().toLowerCase();
+  return normalized.contains('token') ||
+      normalized.contains('secret') ||
+      normalized.contains('credential') ||
+      normalized.contains('password');
 }

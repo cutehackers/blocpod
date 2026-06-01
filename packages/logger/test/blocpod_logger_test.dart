@@ -74,4 +74,31 @@ void main() {
     expect(formatted, isNot(contains('cred')));
     expect(formatted, isNot(contains('pw')));
   });
+
+  test('formatting redacts nested sensitive metadata', () {
+    final formatted = formatBlocpodLogEntry(
+      BlocpodLogEntry(
+        level: BlocpodLogLevel.error,
+        message: 'failed',
+        timestamp: DateTime.utc(2026, 6),
+        metadata: const {
+          'auth': {'userId': 'user-1', 'password': 'pw', 'token': 'abc'},
+          'attempts': [
+            {'step': 'refresh', 'secretKey': 'hidden', 'credentialId': 'cred'},
+          ],
+        },
+      ),
+    );
+
+    expect(formatted, contains('auth={userId: user-1}'));
+    expect(formatted, contains('attempts=[{step: refresh}]'));
+    expect(formatted, isNot(contains('password')));
+    expect(formatted, isNot(contains('token')));
+    expect(formatted, isNot(contains('secretKey')));
+    expect(formatted, isNot(contains('credentialId')));
+    expect(formatted, isNot(contains('pw')));
+    expect(formatted, isNot(contains('abc')));
+    expect(formatted, isNot(contains('hidden')));
+    expect(formatted, isNot(contains('cred')));
+  });
 }
