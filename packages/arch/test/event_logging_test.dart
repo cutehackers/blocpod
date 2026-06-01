@@ -193,7 +193,10 @@ void main() {
   });
 
   test('metadata failures do not mask original event handler errors', () async {
-    final container = ProviderContainer();
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(
+      overrides: [eventLoggerProvider.overrideWithValue(logger)],
+    );
     addTearDown(container.dispose);
 
     await expectLater(
@@ -208,6 +211,19 @@ void main() {
         ),
       ),
     );
+
+    expect(logger.records, hasLength(1));
+    expect(logger.records.single.eventName, 'ThrowEventAndMetadataEvent');
+    expect(
+      logger.records.single.error,
+      isA<StateError>().having(
+        (error) => error.message,
+        'message',
+        'handler failed',
+      ),
+    );
+    expect(logger.records.single.stackTrace, isNotNull);
+    expect(logger.records.single.metadata, isEmpty);
   });
 
   test('logger failures do not break application flow', () async {

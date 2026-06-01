@@ -74,12 +74,17 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
     required Object? error,
     required StackTrace? stackTrace,
   }) {
+    final after = state;
+    final safeControllerName = _safeControllerName();
+    final safeEventName = _safeEventName(event);
+    final safeMetadata = _safeMetadataFor(event);
+    EventLogRecord record;
+
     try {
-      final after = state;
-      final record = EventLogRecord(
+      record = EventLogRecord(
         traceContext: traceContext,
-        controllerName: controllerName,
-        eventName: eventName(event),
+        controllerName: safeControllerName,
+        eventName: safeEventName,
         startedAt: startedAt,
         duration: DateTime.now().toUtc().difference(startedAt),
         beforeStateKind: asyncValueKindOf(before),
@@ -87,12 +92,40 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
         hasChanged: before != after,
         error: error,
         stackTrace: stackTrace,
-        metadata: metadataFor(event),
+        metadata: safeMetadata,
       );
+    } catch (_) {
+      return;
+    }
 
+    try {
       ref.read(eventLoggerProvider).log(record);
     } catch (_) {
       // Logging must never affect application flow.
+    }
+  }
+
+  String _safeControllerName() {
+    try {
+      return controllerName;
+    } catch (_) {
+      return runtimeType.toString();
+    }
+  }
+
+  String _safeEventName(E event) {
+    try {
+      return eventName(event);
+    } catch (_) {
+      return event.runtimeType.toString();
+    }
+  }
+
+  Map<String, Object?> _safeMetadataFor(E event) {
+    try {
+      return metadataFor(event);
+    } catch (_) {
+      return const {};
     }
   }
 }
