@@ -15,9 +15,9 @@ The workspace starts from the design in [docs/superpowers/specs/2026-06-01-blocp
 ```sh
 flutter pub get
 dart pub workspace list
-cd packages/arch && flutter test
-cd packages/logger && flutter test
-cd packages/arch_logger && flutter test
+(cd packages/arch && flutter test)
+(cd packages/logger && flutter test)
+(cd packages/arch_logger && flutter test)
 flutter analyze
 dart format --line-length 120 .
 ```
