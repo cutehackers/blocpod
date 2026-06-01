@@ -16,7 +16,10 @@ void main() {
 
       final entry = sink.entries.single;
       expect(entry.level, BlocpodLogLevel.info);
-      expect(entry.message, 'CounterController IncrementEvent loading->data 12ms');
+      expect(
+        entry.message,
+        'CounterController IncrementEvent loading->data 12ms',
+      );
       expect(entry.timestamp, record.startedAt);
       expect(entry.metadata, <String, Object?>{
         'traceId': record.traceContext.traceId,
@@ -52,6 +55,28 @@ void main() {
       expect(metadata['traceId'], record.traceContext.traceId);
       expect(metadata['controllerName'], 'CounterController');
       expect(metadata['durationMicros'], 12000);
+      expect(metadata['feature'], 'counter');
+    });
+
+    test('drops fake parent span metadata for root spans', () {
+      final sink = MemoryLogSink();
+      final logger = BlocpodEventLogger(sink);
+      final record = eventRecord(
+        useRootTraceContext: true,
+        metadata: const <String, Object?>{
+          'parentSpanId': 'fake',
+          'feature': 'counter',
+        },
+      );
+
+      logger.log(record);
+
+      final metadata = sink.entries.single.metadata;
+      expect(record.traceContext.parentSpanId, isNull);
+      expect(
+        metadata.containsKey('parentSpanId') ? metadata['parentSpanId'] : null,
+        isNull,
+      );
       expect(metadata['feature'], 'counter');
     });
 
@@ -98,11 +123,15 @@ EventLogRecord eventRecord({
   Object? error,
   StackTrace? stackTrace,
   Map<String, Object?> metadata = const <String, Object?>{'feature': 'counter'},
+  bool useRootTraceContext = false,
 }) {
   final startedAt = DateTime.utc(2026, 6, 1, 9, 30);
-  final traceContext = TraceContext.root(
+  final rootTraceContext = TraceContext.root(
     startedAt: startedAt.subtract(const Duration(milliseconds: 1)),
-  ).child(startedAt: startedAt);
+  );
+  final traceContext = useRootTraceContext
+      ? rootTraceContext
+      : rootTraceContext.child(startedAt: startedAt);
 
   return EventLogRecord(
     traceContext: traceContext,
