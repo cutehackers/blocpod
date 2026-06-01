@@ -13,25 +13,19 @@ final class AddCounterEvent extends CounterEvent {
   final int amount;
 }
 
-final counterProvider = AsyncNotifierProvider<CounterController, int>(
-  CounterController.new,
+final counterProvider = AsyncNotifierProvider<CounterController, int>(CounterController.new);
+
+final autoDisposeCounterProvider = AsyncNotifierProvider.autoDispose<CounterController, int>(CounterController.new);
+
+final familyCounterProvider = AsyncNotifierProvider.family<FamilyCounterController, int, int>(
+  FamilyCounterController.new,
 );
 
-final autoDisposeCounterProvider =
-    AsyncNotifierProvider.autoDispose<CounterController, int>(
-      CounterController.new,
-    );
+final autoDisposeFamilyCounterProvider = AsyncNotifierProvider.autoDispose.family<FamilyCounterController, int, int>(
+  FamilyCounterController.new,
+);
 
-final familyCounterProvider =
-    AsyncNotifierProvider.family<FamilyCounterController, int, int>(
-      FamilyCounterController.new,
-    );
-
-final autoDisposeFamilyCounterProvider = AsyncNotifierProvider.autoDispose
-    .family<FamilyCounterController, int, int>(FamilyCounterController.new);
-
-final class CounterController
-    extends EventControllerNotifier<int, CounterEvent> {
+final class CounterController extends EventControllerNotifier<int, CounterEvent> {
   @override
   Future<int> build() async {
     return 0;
@@ -53,8 +47,7 @@ final class CounterController
   }
 }
 
-final class FamilyCounterController
-    extends EventControllerNotifier<int, CounterEvent> {
+final class FamilyCounterController extends EventControllerNotifier<int, CounterEvent> {
   FamilyCounterController(this.initialValue);
 
   final int initialValue;
@@ -85,14 +78,9 @@ void main() {
     final container = ProviderContainer();
     addTearDown(container.dispose);
 
-    await container
-        .read(counterProvider.notifier)
-        .dispatch(const AddCounterEvent(2));
+    await container.read(counterProvider.notifier).dispatch(const AddCounterEvent(2));
 
-    expect(
-      container.read(counterProvider),
-      isA<AsyncData<int>>().having((value) => value.value, 'value', 2),
-    );
+    expect(container.read(counterProvider), isA<AsyncData<int>>().having((value) => value.value, 'value', 2));
   });
 
   test('Ref.dispatch supports regular and autoDispose providers', () async {
@@ -109,52 +97,38 @@ void main() {
     await container.read(regularDispatchProvider);
     await container.read(autoDisposeDispatchProvider);
 
-    expect(
-      container.read(counterProvider),
-      isA<AsyncData<int>>().having((value) => value.value, 'value', 3),
-    );
+    expect(container.read(counterProvider), isA<AsyncData<int>>().having((value) => value.value, 'value', 3));
     expect(
       container.read(autoDisposeCounterProvider),
       isA<AsyncData<int>>().having((value) => value.value, 'value', 4),
     );
   });
 
-  test(
-    'Ref.dispatch supports family and autoDispose.family providers',
-    () async {
-      final container = ProviderContainer();
-      addTearDown(container.dispose);
+  test('Ref.dispatch supports family and autoDispose.family providers', () async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
 
-      final familyDispatchProvider = Provider<Future<void>>((ref) {
-        return ref.dispatch(
-          familyCounterProvider(10),
-          const AddCounterEvent(5),
-        );
-      });
-      final autoDisposeFamilyDispatchProvider = Provider<Future<void>>((ref) {
-        return ref.dispatch(
-          autoDisposeFamilyCounterProvider(20),
-          const AddCounterEvent(6),
-        );
-      });
+    final familyDispatchProvider = Provider<Future<void>>((ref) {
+      return ref.dispatch(familyCounterProvider(10), const AddCounterEvent(5));
+    });
+    final autoDisposeFamilyDispatchProvider = Provider<Future<void>>((ref) {
+      return ref.dispatch(autoDisposeFamilyCounterProvider(20), const AddCounterEvent(6));
+    });
 
-      await container.read(familyDispatchProvider);
-      await container.read(autoDisposeFamilyDispatchProvider);
+    await container.read(familyDispatchProvider);
+    await container.read(autoDisposeFamilyDispatchProvider);
 
-      expect(
-        container.read(familyCounterProvider(10)),
-        isA<AsyncData<int>>().having((value) => value.value, 'value', 15),
-      );
-      expect(
-        container.read(autoDisposeFamilyCounterProvider(20)),
-        isA<AsyncData<int>>().having((value) => value.value, 'value', 26),
-      );
-    },
-  );
+    expect(
+      container.read(familyCounterProvider(10)),
+      isA<AsyncData<int>>().having((value) => value.value, 'value', 15),
+    );
+    expect(
+      container.read(autoDisposeFamilyCounterProvider(20)),
+      isA<AsyncData<int>>().having((value) => value.value, 'value', 26),
+    );
+  });
 
-  testWidgets('WidgetRef.dispatch routes events through the same boundary', (
-    tester,
-  ) async {
+  testWidgets('WidgetRef.dispatch routes events through the same boundary', (tester) async {
     final container = ProviderContainer();
     addTearDown(container.dispose);
 
@@ -173,9 +147,6 @@ void main() {
 
     await widgetRef.dispatch(counterProvider, const AddCounterEvent(8));
 
-    expect(
-      container.read(counterProvider),
-      isA<AsyncData<int>>().having((value) => value.value, 'value', 8),
-    );
+    expect(container.read(counterProvider), isA<AsyncData<int>>().having((value) => value.value, 'value', 8));
   });
 }

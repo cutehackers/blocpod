@@ -12,8 +12,7 @@ abstract class EventController<E> {
 }
 
 /// Riverpod [AsyncNotifier] base class with a single event dispatch boundary.
-abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
-    implements EventController<E> {
+abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements EventController<E> {
   @override
   Future<void> dispatch(E event) async {
     await future;
@@ -133,10 +132,7 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
 /// Dispatch helper for providers and other non-widget Riverpod code.
 extension RefEventDispatcherX on Ref {
   /// Reads [provider]'s notifier and dispatches [event].
-  Future<void> dispatch<N extends EventControllerNotifier<S, E>, S, E>(
-    AsyncNotifierProvider<N, S> provider,
-    E event,
-  ) {
+  Future<void> dispatch<N extends EventControllerNotifier<S, E>, S, E>(AsyncNotifierProvider<N, S> provider, E event) {
     return read(provider.notifier).dispatch(event);
   }
 }
@@ -144,10 +140,7 @@ extension RefEventDispatcherX on Ref {
 /// Dispatch helper for widgets.
 extension WidgetRefEventDispatcherX on WidgetRef {
   /// Reads [provider]'s notifier and dispatches [event].
-  Future<void> dispatch<N extends EventControllerNotifier<S, E>, S, E>(
-    AsyncNotifierProvider<N, S> provider,
-    E event,
-  ) {
+  Future<void> dispatch<N extends EventControllerNotifier<S, E>, S, E>(AsyncNotifierProvider<N, S> provider, E event) {
     return read(provider.notifier).dispatch(event);
   }
 }

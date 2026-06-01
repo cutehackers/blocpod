@@ -16,10 +16,7 @@ void main() {
 
       final entry = sink.entries.single;
       expect(entry.level, BlocpodLogLevel.info);
-      expect(
-        entry.message,
-        'CounterController IncrementEvent loading->data 12ms',
-      );
+      expect(entry.message, 'CounterController IncrementEvent loading->data 12ms');
       expect(entry.timestamp, record.startedAt);
       expect(entry.metadata, <String, Object?>{
         'traceId': record.traceContext.traceId,

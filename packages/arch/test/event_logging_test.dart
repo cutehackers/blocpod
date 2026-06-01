@@ -30,17 +30,13 @@ final class ThrowEventAndMetadataEvent extends LoggingEvent {
   const ThrowEventAndMetadataEvent();
 }
 
-final loggingProvider = AsyncNotifierProvider<LoggingController, int>(
-  LoggingController.new,
+final loggingProvider = AsyncNotifierProvider<LoggingController, int>(LoggingController.new);
+
+final explodingEqualityProvider = AsyncNotifierProvider<ExplodingEqualityController, ExplodingEquality>(
+  ExplodingEqualityController.new,
 );
 
-final explodingEqualityProvider =
-    AsyncNotifierProvider<ExplodingEqualityController, ExplodingEquality>(
-      ExplodingEqualityController.new,
-    );
-
-final class LoggingController
-    extends EventControllerNotifier<int, LoggingEvent> {
+final class LoggingController extends EventControllerNotifier<int, LoggingEvent> {
   @override
   Future<int> build() async {
     return 0;
@@ -100,8 +96,7 @@ final class ExplodingEqualityEvent {
   const ExplodingEqualityEvent();
 }
 
-final class ExplodingEqualityController
-    extends EventControllerNotifier<ExplodingEquality, ExplodingEqualityEvent> {
+final class ExplodingEqualityController extends EventControllerNotifier<ExplodingEquality, ExplodingEqualityEvent> {
   @override
   Future<ExplodingEquality> build() async {
     return const ExplodingEquality(0);
@@ -113,10 +108,7 @@ final class ExplodingEqualityController
   }
 
   @override
-  bool updateShouldNotify(
-    AsyncValue<ExplodingEquality> previous,
-    AsyncValue<ExplodingEquality> next,
-  ) {
+  bool updateShouldNotify(AsyncValue<ExplodingEquality> previous, AsyncValue<ExplodingEquality> next) {
     return !identical(previous, next);
   }
 }
@@ -142,26 +134,17 @@ void main() {
     final container = ProviderContainer();
     addTearDown(container.dispose);
 
-    await container
-        .read(loggingProvider.notifier)
-        .dispatch(const IncrementEvent());
+    await container.read(loggingProvider.notifier).dispatch(const IncrementEvent());
 
-    expect(
-      container.read(loggingProvider),
-      isA<AsyncData<int>>().having((value) => value.value, 'value', 1),
-    );
+    expect(container.read(loggingProvider), isA<AsyncData<int>>().having((value) => value.value, 'value', 1));
   });
 
   test('dispatch logs before and after AsyncValue state kinds', () async {
     final logger = CollectingEventLogger();
-    final container = ProviderContainer(
-      overrides: [eventLoggerProvider.overrideWithValue(logger)],
-    );
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
     addTearDown(container.dispose);
 
-    await container
-        .read(loggingProvider.notifier)
-        .dispatch(const IncrementEvent());
+    await container.read(loggingProvider.notifier).dispatch(const IncrementEvent());
 
     expect(logger.records, hasLength(1));
     expect(logger.records.single.controllerName, 'LoggingController');
@@ -174,44 +157,31 @@ void main() {
     expect(logger.records.single.stackTrace, isNull);
   });
 
-  test(
-    'dispatch logs thrown errors and preserves the original stack trace',
-    () async {
-      final logger = CollectingEventLogger();
-      final container = ProviderContainer(
-        overrides: [eventLoggerProvider.overrideWithValue(logger)],
-      );
-      addTearDown(container.dispose);
+  test('dispatch logs thrown errors and preserves the original stack trace', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
 
-      await expectLater(
-        container.read(loggingProvider.notifier).dispatch(const ThrowEvent()),
-        throwsA(isA<StateError>()),
-      );
+    await expectLater(
+      container.read(loggingProvider.notifier).dispatch(const ThrowEvent()),
+      throwsA(isA<StateError>()),
+    );
 
-      expect(logger.records, hasLength(1));
-      expect(logger.records.single.eventName, 'ThrowEvent');
-      expect(logger.records.single.error, isA<StateError>());
-      expect(logger.records.single.stackTrace, isNotNull);
-    },
-  );
+    expect(logger.records, hasLength(1));
+    expect(logger.records.single.eventName, 'ThrowEvent');
+    expect(logger.records.single.error, isA<StateError>());
+    expect(logger.records.single.stackTrace, isNotNull);
+  });
 
   test('nested dispatches keep one trace id and create child spans', () async {
     final logger = CollectingEventLogger();
-    final container = ProviderContainer(
-      overrides: [eventLoggerProvider.overrideWithValue(logger)],
-    );
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
     addTearDown(container.dispose);
 
-    await container
-        .read(loggingProvider.notifier)
-        .dispatch(const ParentEvent());
+    await container.read(loggingProvider.notifier).dispatch(const ParentEvent());
 
-    final parent = logger.records.singleWhere(
-      (record) => record.eventName == 'ParentEvent',
-    );
-    final child = logger.records.singleWhere(
-      (record) => record.eventName == 'ChildEvent',
-    );
+    final parent = logger.records.singleWhere((record) => record.eventName == 'ParentEvent');
+    final child = logger.records.singleWhere((record) => record.eventName == 'ChildEvent');
 
     expect(child.traceContext.traceId, parent.traceContext.traceId);
     expect(parent.traceContext.traceId, startsWith('trace-'));
@@ -226,92 +196,59 @@ void main() {
     final container = ProviderContainer();
     addTearDown(container.dispose);
 
-    await container
-        .read(loggingProvider.notifier)
-        .dispatch(const ThrowMetadataEvent());
+    await container.read(loggingProvider.notifier).dispatch(const ThrowMetadataEvent());
 
-    expect(
-      container.read(loggingProvider),
-      isA<AsyncData<int>>().having((value) => value.value, 'value', 20),
-    );
+    expect(container.read(loggingProvider), isA<AsyncData<int>>().having((value) => value.value, 'value', 20));
   });
 
   test('metadata failures do not mask original event handler errors', () async {
     final logger = CollectingEventLogger();
-    final container = ProviderContainer(
-      overrides: [eventLoggerProvider.overrideWithValue(logger)],
-    );
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
     addTearDown(container.dispose);
 
     await expectLater(
-      container
-          .read(loggingProvider.notifier)
-          .dispatch(const ThrowEventAndMetadataEvent()),
-      throwsA(
-        isA<StateError>().having(
-          (error) => error.message,
-          'message',
-          'handler failed',
-        ),
-      ),
+      container.read(loggingProvider.notifier).dispatch(const ThrowEventAndMetadataEvent()),
+      throwsA(isA<StateError>().having((error) => error.message, 'message', 'handler failed')),
     );
 
     expect(logger.records, hasLength(1));
     expect(logger.records.single.eventName, 'ThrowEventAndMetadataEvent');
     expect(
       logger.records.single.error,
-      isA<StateError>().having(
-        (error) => error.message,
-        'message',
-        'handler failed',
-      ),
+      isA<StateError>().having((error) => error.message, 'message', 'handler failed'),
     );
     expect(logger.records.single.stackTrace, isNotNull);
     expect(logger.records.single.metadata, isEmpty);
   });
 
   test('logger failures do not break application flow', () async {
-    final container = ProviderContainer(
-      overrides: [eventLoggerProvider.overrideWithValue(ThrowingEventLogger())],
-    );
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(ThrowingEventLogger())]);
     addTearDown(container.dispose);
 
-    await container
-        .read(loggingProvider.notifier)
-        .dispatch(const IncrementEvent());
+    await container.read(loggingProvider.notifier).dispatch(const IncrementEvent());
 
-    expect(
-      container.read(loggingProvider),
-      isA<AsyncData<int>>().having((value) => value.value, 'value', 1),
-    );
+    expect(container.read(loggingProvider), isA<AsyncData<int>>().having((value) => value.value, 'value', 1));
   });
 
   test('hasChanged does not invoke AsyncData payload equality', () async {
     final logger = CollectingEventLogger();
-    final container = ProviderContainer(
-      overrides: [eventLoggerProvider.overrideWithValue(logger)],
-    );
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
     addTearDown(container.dispose);
 
-    await container
-        .read(explodingEqualityProvider.notifier)
-        .dispatch(const ExplodingEqualityEvent());
+    await container.read(explodingEqualityProvider.notifier).dispatch(const ExplodingEqualityEvent());
 
     expect(logger.records, hasLength(1));
     expect(logger.records.single.hasChanged, isTrue);
   });
 
-  test(
-    'TraceContext.run exposes current context only inside the async zone',
-    () async {
-      final context = TraceContext.root(startedAt: DateTime.utc(2026, 6));
+  test('TraceContext.run exposes current context only inside the async zone', () async {
+    final context = TraceContext.root(startedAt: DateTime.utc(2026, 6));
 
-      expect(TraceContext.current, isNull);
-      await TraceContext.run(context, () async {
-        await Future<void>.delayed(Duration.zero);
-        expect(TraceContext.current, same(context));
-      });
-      expect(TraceContext.current, isNull);
-    },
-  );
+    expect(TraceContext.current, isNull);
+    await TraceContext.run(context, () async {
+      await Future<void>.delayed(Duration.zero);
+      expect(TraceContext.current, same(context));
+    });
+    expect(TraceContext.current, isNull);
+  });
 }

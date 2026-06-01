@@ -5,10 +5,7 @@ import 'event_log_record_formatter.dart';
 
 /// [EventLogger] implementation backed by a [BlocpodLogSink].
 final class BlocpodEventLogger implements EventLogger {
-  const BlocpodEventLogger(
-    this.sink, {
-    this.formatter = const EventLogRecordFormatter(),
-  });
+  const BlocpodEventLogger(this.sink, {this.formatter = const EventLogRecordFormatter()});
 
   /// Target log sink.
   final BlocpodLogSink sink;

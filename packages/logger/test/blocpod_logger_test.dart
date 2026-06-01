@@ -44,10 +44,7 @@ void main() {
     expect(messages, hasLength(1));
     expect(messages.single, contains('[info]'));
     expect(messages.single, contains('2026-06-01T09:30:00.000Z'));
-    expect(
-      messages.single,
-      contains('CounterController IncrementEvent data->data'),
-    );
+    expect(messages.single, contains('CounterController IncrementEvent data->data'));
     expect(messages.single, contains('traceId=trace-1'));
     expect(messages.single, contains('durationMicros=1200'));
   });
