@@ -1,0 +1,12 @@
+name: blocpod_logger
+description: Generic logging primitives for Blocpod.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.11.5
+
+resolution: workspace
+
+dev_dependencies:
+  test: ^1.26.0
