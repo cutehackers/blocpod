@@ -16,6 +16,12 @@ Avoid importing private `src/` files from other packages.
 - Event-specific handlers remain private implementation details.
 - Keep domain use cases independent from logging adapters.
 
+## Dependency Direction
+
+- `blocpod_arch` must not depend on `blocpod_logger`.
+- `blocpod_logger` must not depend on `blocpod_arch`.
+- `blocpod_arch_logger` is the only bridge package that depends on both.
+
 ## Logging
 
 - Core event logging flows through `EventControllerNotifier.dispatch`.
