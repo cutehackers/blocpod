@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:blocpod_arch/blocpod_arch.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -22,6 +20,14 @@ final class ParentEvent extends LoggingEvent {
 
 final class ChildEvent extends LoggingEvent {
   const ChildEvent();
+}
+
+final class ThrowMetadataEvent extends LoggingEvent {
+  const ThrowMetadataEvent();
+}
+
+final class ThrowEventAndMetadataEvent extends LoggingEvent {
+  const ThrowEventAndMetadataEvent();
 }
 
 final loggingProvider = AsyncNotifierProvider<LoggingController, int>(
@@ -51,6 +57,10 @@ final class LoggingController
         state = const AsyncData(10);
       case ChildEvent():
         state = const AsyncData(5);
+      case ThrowMetadataEvent():
+        state = const AsyncData(20);
+      case ThrowEventAndMetadataEvent():
+        throw StateError('handler failed');
     }
   }
 
@@ -61,6 +71,8 @@ final class LoggingController
       ThrowEvent() => const {'kind': 'throw'},
       ParentEvent() => const {'kind': 'parent'},
       ChildEvent() => const {'kind': 'child'},
+      ThrowMetadataEvent() => throw StateError('metadata failed'),
+      ThrowEventAndMetadataEvent() => throw StateError('metadata failed'),
     };
   }
 }
@@ -158,9 +170,44 @@ void main() {
     );
 
     expect(child.traceContext.traceId, parent.traceContext.traceId);
+    expect(parent.traceContext.traceId, startsWith('trace-'));
+    expect(parent.traceContext.spanId, startsWith('span-'));
+    expect(child.traceContext.spanId, startsWith('span-'));
     expect(parent.traceContext.parentSpanId, isNull);
     expect(child.traceContext.parentSpanId, parent.traceContext.spanId);
     expect(child.traceContext.spanId, isNot(parent.traceContext.spanId));
+  });
+
+  test('metadata failures do not break successful dispatches', () async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    await container
+        .read(loggingProvider.notifier)
+        .dispatch(const ThrowMetadataEvent());
+
+    expect(
+      container.read(loggingProvider),
+      isA<AsyncData<int>>().having((value) => value.value, 'value', 20),
+    );
+  });
+
+  test('metadata failures do not mask original event handler errors', () async {
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+
+    await expectLater(
+      container
+          .read(loggingProvider.notifier)
+          .dispatch(const ThrowEventAndMetadataEvent()),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          'handler failed',
+        ),
+      ),
+    );
   });
 
   test('logger failures do not break application flow', () async {

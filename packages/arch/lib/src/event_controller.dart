@@ -36,21 +36,13 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
       stackTrace = caughtStackTrace;
       Error.throwWithStackTrace(caughtError, caughtStackTrace);
     } finally {
-      final after = state;
       _logSafely(
-        EventLogRecord(
-          traceContext: traceContext,
-          controllerName: controllerName,
-          eventName: eventName(event),
-          startedAt: startedAt,
-          duration: DateTime.now().toUtc().difference(startedAt),
-          beforeStateKind: asyncValueKindOf(before),
-          afterStateKind: asyncValueKindOf(after),
-          hasChanged: before != after,
-          error: error,
-          stackTrace: stackTrace,
-          metadata: metadataFor(event),
-        ),
+        event: event,
+        before: before,
+        traceContext: traceContext,
+        startedAt: startedAt,
+        error: error,
+        stackTrace: stackTrace,
       );
     }
   }
@@ -67,12 +59,37 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
   @protected
   String eventName(E event) => event.runtimeType.toString();
 
-  /// Additional structured metadata recorded for [event].
+  /// Sanitized structured metadata recorded for [event].
+  ///
+  /// Values must not include secrets, raw state payloads, or other sensitive
+  /// application data.
   @protected
   Map<String, Object?> metadataFor(E event) => const {};
 
-  void _logSafely(EventLogRecord record) {
+  void _logSafely({
+    required E event,
+    required AsyncValue<S> before,
+    required TraceContext traceContext,
+    required DateTime startedAt,
+    required Object? error,
+    required StackTrace? stackTrace,
+  }) {
     try {
+      final after = state;
+      final record = EventLogRecord(
+        traceContext: traceContext,
+        controllerName: controllerName,
+        eventName: eventName(event),
+        startedAt: startedAt,
+        duration: DateTime.now().toUtc().difference(startedAt),
+        beforeStateKind: asyncValueKindOf(before),
+        afterStateKind: asyncValueKindOf(after),
+        hasChanged: before != after,
+        error: error,
+        stackTrace: stackTrace,
+        metadata: metadataFor(event),
+      );
+
       ref.read(eventLoggerProvider).log(record);
     } catch (_) {
       // Logging must never affect application flow.
