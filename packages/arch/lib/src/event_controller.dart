@@ -89,7 +89,7 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
         duration: DateTime.now().toUtc().difference(startedAt),
         beforeStateKind: asyncValueKindOf(before),
         afterStateKind: asyncValueKindOf(after),
-        hasChanged: before != after,
+        hasChanged: !identical(before, after),
         error: error,
         stackTrace: stackTrace,
         metadata: safeMetadata,

@@ -34,6 +34,11 @@ final loggingProvider = AsyncNotifierProvider<LoggingController, int>(
   LoggingController.new,
 );
 
+final explodingEqualityProvider =
+    AsyncNotifierProvider<ExplodingEqualityController, ExplodingEquality>(
+      ExplodingEqualityController.new,
+    );
+
 final class LoggingController
     extends EventControllerNotifier<int, LoggingEvent> {
   @override
@@ -74,6 +79,45 @@ final class LoggingController
       ThrowMetadataEvent() => throw StateError('metadata failed'),
       ThrowEventAndMetadataEvent() => throw StateError('metadata failed'),
     };
+  }
+}
+
+final class ExplodingEquality {
+  const ExplodingEquality(this.value);
+
+  final int value;
+
+  @override
+  bool operator ==(Object other) {
+    throw StateError('payload equality should not be called');
+  }
+
+  @override
+  int get hashCode => value.hashCode;
+}
+
+final class ExplodingEqualityEvent {
+  const ExplodingEqualityEvent();
+}
+
+final class ExplodingEqualityController
+    extends EventControllerNotifier<ExplodingEquality, ExplodingEqualityEvent> {
+  @override
+  Future<ExplodingEquality> build() async {
+    return const ExplodingEquality(0);
+  }
+
+  @override
+  Future<void> onEvent(ExplodingEqualityEvent event) async {
+    state = const AsyncData(ExplodingEquality(1));
+  }
+
+  @override
+  bool updateShouldNotify(
+    AsyncValue<ExplodingEquality> previous,
+    AsyncValue<ExplodingEquality> next,
+  ) {
+    return !identical(previous, next);
   }
 }
 
@@ -240,6 +284,21 @@ void main() {
       container.read(loggingProvider),
       isA<AsyncData<int>>().having((value) => value.value, 'value', 1),
     );
+  });
+
+  test('hasChanged does not invoke AsyncData payload equality', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(
+      overrides: [eventLoggerProvider.overrideWithValue(logger)],
+    );
+    addTearDown(container.dispose);
+
+    await container
+        .read(explodingEqualityProvider.notifier)
+        .dispatch(const ExplodingEqualityEvent());
+
+    expect(logger.records, hasLength(1));
+    expect(logger.records.single.hasChanged, isTrue);
   });
 
   test(
