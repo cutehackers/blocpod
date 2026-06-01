@@ -8,5 +8,10 @@ environment:
 
 resolution: workspace
 
+dependencies:
+  flutter:
+    sdk: flutter
+
 dev_dependencies:
-  test: ^1.26.0
+  flutter_test:
+    sdk: flutter
