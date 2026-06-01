@@ -18,6 +18,7 @@ final class EventLogRecordFormatter {
           '${record.controllerName} ${record.eventName} $beforeKind->$afterKind ${record.duration.inMilliseconds}ms',
       timestamp: record.startedAt,
       metadata: <String, Object?>{
+        ...record.metadata,
         'traceId': record.traceContext.traceId,
         'spanId': record.traceContext.spanId,
         if (record.traceContext.parentSpanId != null)
@@ -28,7 +29,6 @@ final class EventLogRecordFormatter {
         'beforeStateKind': beforeKind,
         'afterStateKind': afterKind,
         'hasChanged': record.hasChanged,
-        ...record.metadata,
       },
       error: record.error,
       stackTrace: record.stackTrace,

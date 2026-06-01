@@ -37,6 +37,27 @@ void main() {
       expect(entry.stackTrace, isNull);
     });
 
+    test('preserves reserved bridge metadata on caller collisions', () {
+      final sink = MemoryLogSink();
+      final logger = BlocpodEventLogger(sink);
+      final record = eventRecord(
+        metadata: const <String, Object?>{
+          'traceId': 'wrong-trace',
+          'controllerName': 'WrongController',
+          'durationMicros': -1,
+          'feature': 'counter',
+        },
+      );
+
+      logger.log(record);
+
+      final metadata = sink.entries.single.metadata;
+      expect(metadata['traceId'], record.traceContext.traceId);
+      expect(metadata['controllerName'], 'CounterController');
+      expect(metadata['durationMicros'], 12000);
+      expect(metadata['feature'], 'counter');
+    });
+
     test('maps error records to error-level entries', () {
       final sink = MemoryLogSink();
       final logger = BlocpodEventLogger(sink);
@@ -76,7 +97,11 @@ final class ThrowingLogSink implements BlocpodLogSink {
   }
 }
 
-EventLogRecord eventRecord({Object? error, StackTrace? stackTrace}) {
+EventLogRecord eventRecord({
+  Object? error,
+  StackTrace? stackTrace,
+  Map<String, Object?> metadata = const <String, Object?>{'feature': 'counter'},
+}) {
   final startedAt = DateTime.utc(2026, 6, 1, 9, 30);
   final traceContext = TraceContext.root(
     startedAt: startedAt.subtract(const Duration(milliseconds: 1)),
@@ -93,6 +118,6 @@ EventLogRecord eventRecord({Object? error, StackTrace? stackTrace}) {
     hasChanged: true,
     error: error,
     stackTrace: stackTrace,
-    metadata: const <String, Object?>{'feature': 'counter'},
+    metadata: metadata,
   );
 }
