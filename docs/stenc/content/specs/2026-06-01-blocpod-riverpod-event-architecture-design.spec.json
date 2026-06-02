@@ -1,0 +1,449 @@
+{
+  "schemaVersion": 2,
+  "docType": "spec",
+  "id": "spec:2026-06-01-blocpod-riverpod-event-architecture-design",
+  "slug": "2026-06-01-blocpod-riverpod-event-architecture-design",
+  "status": "canonical",
+  "title": "Blocpod Riverpod Event Architecture Design",
+  "description": "Pit Wall의 Riverpod event-controller 패턴을 재사용 가능한 Blocpod 패키지 워크스페이스로 추출하는 설계 계약입니다.",
+  "owner": "Blocpod workspace",
+  "createdAt": "2026-06-01",
+  "updatedAt": "2026-06-01",
+  "links": {
+    "sourceOfTruth": [
+      "docs/superpowers/specs/2026-06-01-blocpod-riverpod-event-architecture-design.md",
+      "docs/ARCHITECTURE.md",
+      "docs/ARCHITECTURE-ko.md",
+      "docs/CONVENTIONS.md"
+    ],
+    "relatedPlans": [
+      "plan:2026-06-01-blocpod-riverpod-event-architecture"
+    ],
+    "relatedDecisions": []
+  },
+  "page": {
+    "humanSummary": "Blocpod는 Riverpod 위에 BLoC식 typed event dispatch, trace, logging 경계를 더하는 얇은 아키텍처 계층입니다.",
+    "agentSummary": "Blocpod 패키지 의존성 방향, public API, dispatch/logging 계약을 변경하기 전에 이 JSON과 원본 Superpowers spec을 먼저 확인하세요.",
+    "styleTemplate": "evidence-led"
+  },
+  "body": {
+    "goal": "Pit Wall의 Riverpod event-controller 패턴을 `blocpod_arch`, `blocpod_logger`, `blocpod_arch_logger` 패키지로 분리해 재사용 가능한 Dart/Flutter 아키텍처 라이브러리로 만든다.",
+    "problem": "현재 패턴은 애플리케이션 내부 구현에 묶여 있어 다른 Riverpod 기반 앱에서 typed event dispatch, clean-architecture boundary, event traceability, structured logging을 일관되게 재사용하기 어렵다.",
+    "scope": {
+      "in": [
+        "`packages/arch`의 core event architecture와 clean-architecture primitives",
+        "`packages/logger`의 generic log sink와 log entry primitives",
+        "`packages/arch_logger`의 architecture event record to log entry bridge",
+        "dispatch lifecycle, trace context, event log record, no-op default logger",
+        "패키지 의존성 방향과 문서 계약"
+      ],
+      "out": [
+        "Riverpod provider model 교체",
+        "`bloc` package 재구현",
+        "event handler registration API",
+        "generated `@riverpod` controller class",
+        "OpenTelemetry, Sentry, Crashlytics 같은 외부 logger adapter 초도 구현",
+        "domain params를 통한 trace id 전달",
+        "state payload 전체 기본 로깅"
+      ]
+    },
+    "architecture": {
+      "summary": "`blocpod_arch`는 Riverpod event architecture의 안정 계약을 소유하고 concrete logger를 알지 않는다. `blocpod_logger`는 architecture primitive를 모르는 generic output sink를 소유한다. `blocpod_arch_logger`만 두 패키지를 함께 알아 `EventLogRecord`를 `BlocpodLogEntry`로 변환한다.",
+      "flow": [
+        "Widget calls `ref.dispatch(provider, event)`.",
+        "`EventControllerNotifier.dispatch()` creates or enters `TraceContext`, captures before state, and records start time.",
+        "`onEvent(event)` routes work to private handlers.",
+        "Use case returns `Result<T>` and repository/data source maps expected failures.",
+        "Controller updates `AsyncValue<State>`.",
+        "Dispatch captures after state and emits `EventLogRecord` through `EventLogger`."
+      ]
+    },
+    "requirements": [
+      {
+        "id": "REQ-1",
+        "title": "Riverpod 위의 BLoC식 event boundary",
+        "detail": "모든 user/system action은 controller public method가 아니라 `dispatch(E event)` 경계로 들어와야 한다.",
+        "acceptanceCriteria": [
+          "`EventController<E>`와 `EventControllerNotifier<S, E>`가 public dispatch API를 제공한다.",
+          "event-specific handler는 controller 내부의 protected/private 흐름에 머문다.",
+          "widget과 provider code가 `ref.dispatch(provider, event)`를 사용할 수 있다."
+        ]
+      },
+      {
+        "id": "REQ-2",
+        "title": "Clean architecture primitive",
+        "detail": "expected domain/data failure는 `Result<T>`로 표현하고 use case는 `UseCase<Output, Params>` boundary를 따른다.",
+        "acceptanceCriteria": [
+          "`Result.ok`, `Result.error`, `Ok<T>`, `Error<T>`가 typed branches를 제공한다.",
+          "`UseCase<Output, Params>`와 `NoParams`가 public API로 export된다.",
+          "recoverable user-facing issue는 state field에 남기고 unrecoverable screen failure만 `AsyncError`로 전환한다."
+        ]
+      },
+      {
+        "id": "REQ-3",
+        "title": "Trace context and structured event record",
+        "detail": "각 dispatch는 root 또는 child span을 가지며 before/after state kind, duration, error, sanitized metadata를 payload-free record로 남긴다.",
+        "acceptanceCriteria": [
+          "`TraceContext`는 `traceId`, `spanId`, `parentSpanId`, `startedAt`을 가진다.",
+          "nested dispatch는 같은 trace id와 child span을 가진다.",
+          "`EventLogRecord`는 full state payload나 secret을 기본으로 담지 않는다."
+        ]
+      },
+      {
+        "id": "REQ-4",
+        "title": "Logger decoupling",
+        "detail": "core architecture는 concrete logger sink를 import하지 않고 no-op default로 설치 가능해야 한다.",
+        "acceptanceCriteria": [
+          "`blocpod_arch`는 `blocpod_logger`를 import하지 않는다.",
+          "`blocpod_logger`는 `blocpod_arch`를 import하지 않는다.",
+          "`eventLoggerProvider` default는 `NoopEventLogger`다.",
+          "app은 provider override로 `BlocpodEventLogger(DebugPrintLogSink())` 같은 adapter를 설치한다."
+        ]
+      },
+      {
+        "id": "REQ-5",
+        "title": "Package dependency direction",
+        "detail": "패키지 dependency graph는 one-way로 고정하고 cyclic dependency를 만들지 않는다.",
+        "acceptanceCriteria": [
+          "`blocpod_arch_logger` depends on `blocpod_arch` and `blocpod_logger`.",
+          "`blocpod_arch` depends on Flutter and `flutter_riverpod` only.",
+          "`blocpod_logger` depends on no Blocpod architecture package.",
+          "dependency direction tests and manual `rg` checks prove forbidden imports are absent."
+        ]
+      }
+    ],
+    "approaches": [
+      {
+        "name": "Recommended: three-package split",
+        "tradeoffs": [
+          "core architecture and output formatting stay decoupled.",
+          "bridge package adds one more package but keeps dependency direction explicit.",
+          "apps opt into logging without changing controller code."
+        ],
+        "recommendation": "`blocpod_arch`, `blocpod_logger`, `blocpod_arch_logger`로 책임을 나눈다."
+      },
+      {
+        "name": "Rejected: core package imports logger sink directly",
+        "tradeoffs": [
+          "setup is initially simpler.",
+          "architecture package becomes coupled to output concerns.",
+          "future external sink adapters would pressure core dependencies."
+        ],
+        "recommendation": "금지한다. `blocpod_arch` must not import `blocpod_logger`."
+      },
+      {
+        "name": "Rejected: generated controller classes",
+        "tradeoffs": [
+          "Riverpod generator workflow와 맞아 보일 수 있다.",
+          "현재 architecture baseline의 explicit `AsyncNotifierProvider` and `EventControllerNotifier<S, E>` contract와 충돌한다."
+        ],
+        "recommendation": "초도 Blocpod architecture에서는 generated `@riverpod` controller class를 만들지 않는다."
+      }
+    ],
+    "components": [
+      {
+        "name": "blocpod_arch",
+        "responsibility": "core event architecture, dispatch lifecycle, `Result`, `UseCase`, trace context, event records, logger interface, no-op logger provider를 소유한다.",
+        "interfaces": [
+          "`EventController<E>`",
+          "`EventControllerNotifier<S, E>`",
+          "`RefEventDispatcherX`",
+          "`WidgetRefEventDispatcherX`",
+          "`Result<T>`, `Ok<T>`, `Error<T>`",
+          "`UseCase<Output, Params>`, `NoParams`",
+          "`TraceContext`",
+          "`EventLogRecord`",
+          "`EventLogger`, `NoopEventLogger`, `eventLoggerProvider`"
+        ],
+        "dependencies": [
+          "flutter",
+          "flutter_riverpod"
+        ]
+      },
+      {
+        "name": "blocpod_logger",
+        "responsibility": "generic logging primitives와 local-development debug output formatting을 제공하되 Riverpod architecture primitive를 import하지 않는다.",
+        "interfaces": [
+          "`BlocpodLogSink`",
+          "`BlocpodLogLevel`",
+          "`BlocpodLogEntry`",
+          "`DebugPrintLogSink`",
+          "`formatBlocpodLogEntry`"
+        ],
+        "dependencies": [
+          "flutter only when `DebugPrintLogSink` uses `debugPrint`",
+          "no dependency on `blocpod_arch`"
+        ]
+      },
+      {
+        "name": "blocpod_arch_logger",
+        "responsibility": "`EventLogRecord`를 `BlocpodLogEntry`로 변환하고 `EventLogger` implementation을 제공한다.",
+        "interfaces": [
+          "`BlocpodEventLogger`",
+          "`EventLogRecordFormatter`",
+          "provider override convenience wiring"
+        ],
+        "dependencies": [
+          "blocpod_arch",
+          "blocpod_logger"
+        ]
+      }
+    ],
+    "dataFlow": [
+      "Widget -> `ref.dispatch(provider, Event)`",
+      "`EventControllerNotifier.dispatch()` -> `TraceContext` 생성 또는 child span 진입",
+      "dispatch -> before `AsyncValue` capture and start time record",
+      "`onEvent(event)` -> private handler route",
+      "handler -> `UseCase` -> `Result<T>`",
+      "`Repository` / `DataSource` -> external failure mapping",
+      "controller -> `AsyncValue<State>` update",
+      "dispatch finally -> after `AsyncValue` capture -> `EventLogRecord` -> `EventLogger`"
+    ],
+    "errorHandling": [
+      {
+        "case": "Expected domain/data failure",
+        "behavior": "`Result<T>`로 표현한다. `Result.ok`는 `AsyncData`로, unrecoverable screen-level failure는 `AsyncError`로 전환한다."
+      },
+      {
+        "case": "Recoverable user-facing issue",
+        "behavior": "화면 state field에 남기고 architecture-level error로 승격하지 않는다."
+      },
+      {
+        "case": "Thrown event handler error",
+        "behavior": "`dispatch`가 original stack trace와 함께 `EventLogRecord`에 기록하고 호출자에게 rethrow한다."
+      },
+      {
+        "case": "Logger sink failure",
+        "behavior": "application flow를 깨지 않도록 logger implementation이 sink error를 catch and isolate한다."
+      },
+      {
+        "case": "Sensitive data",
+        "behavior": "records and formatted logs must not include secrets, credentials, tokens, passwords, or full raw payloads by default."
+      }
+    ],
+    "contracts": [
+      {
+        "name": "Event dispatch boundary",
+        "rules": [
+          "Every user or system action enters through `dispatch`.",
+          "Controllers expose only `dispatch` as their public action API.",
+          "Event-specific handlers stay private/protected inside the controller.",
+          "Widgets dispatch through `ref.dispatch(provider, event)`."
+        ]
+      },
+      {
+        "name": "Trace context",
+        "rules": [
+          "Create a root `TraceContext` when dispatch starts and no current trace exists.",
+          "Nested dispatches reuse current trace id and create child spans.",
+          "Application code must not pass `traceId` through use case parameters.",
+          "Trace context is observability concern, not a domain model."
+        ]
+      },
+      {
+        "name": "Event log record",
+        "rules": [
+          "Record state kind and transition shape, not full state object payloads.",
+          "Metadata must be sanitized and feature-supplied.",
+          "Record controller name, event name, duration, trace, state transition, error, stack trace."
+        ]
+      },
+      {
+        "name": "Dependency direction",
+        "rules": [
+          "`blocpod_arch_logger` depends on `blocpod_arch` and `blocpod_logger`.",
+          "`blocpod_arch` must not import `blocpod_logger`.",
+          "`blocpod_logger` must not import `blocpod_arch`.",
+          "Domain use cases must not depend on logger adapters.",
+          "Feature state must not contain trace context."
+        ]
+      }
+    ],
+    "surfaces": [
+      {
+        "path": "packages/arch/lib/blocpod_arch.dart",
+        "role": "Public barrel for core architecture APIs.",
+        "owner": "blocpod_arch"
+      },
+      {
+        "path": "packages/arch/lib/src/",
+        "role": "Core Result, UseCase, dispatch, trace, log record, logger provider implementation.",
+        "owner": "blocpod_arch"
+      },
+      {
+        "path": "packages/logger/lib/blocpod_logger.dart",
+        "role": "Public barrel for generic logger APIs.",
+        "owner": "blocpod_logger"
+      },
+      {
+        "path": "packages/logger/lib/src/",
+        "role": "Generic log level, entry, sink, debug print formatter.",
+        "owner": "blocpod_logger"
+      },
+      {
+        "path": "packages/arch_logger/lib/blocpod_arch_logger.dart",
+        "role": "Public barrel for architecture logger bridge APIs.",
+        "owner": "blocpod_arch_logger"
+      },
+      {
+        "path": "packages/arch_logger/lib/src/",
+        "role": "Event record formatter and `EventLogger` adapter implementation.",
+        "owner": "blocpod_arch_logger"
+      },
+      {
+        "path": "docs/ARCHITECTURE.md",
+        "role": "English architecture contract documentation.",
+        "owner": "docs"
+      },
+      {
+        "path": "docs/ARCHITECTURE-ko.md",
+        "role": "Korean architecture contract documentation.",
+        "owner": "docs"
+      },
+      {
+        "path": "docs/CONVENTIONS.md",
+        "role": "Mechanical coding and logging conventions.",
+        "owner": "docs"
+      }
+    ],
+    "testingStrategy": [
+      {
+        "command": "cd packages/arch && flutter test",
+        "expected": "`Result<T>`, `UseCase`, dispatch routing, provider variants, trace/logging, default no-op logger, thrown error preservation, dependency direction tests pass."
+      },
+      {
+        "command": "cd packages/logger && flutter test",
+        "expected": "`BlocpodLogEntry`, debug print formatting, sensitive metadata redaction, and no-import-from-arch guard pass."
+      },
+      {
+        "command": "cd packages/arch_logger && flutter test",
+        "expected": "`BlocpodEventLogger` maps records, error records become error-level entries, and sink failure isolation passes."
+      },
+      {
+        "command": "flutter analyze",
+        "expected": "workspace analyzer reports no errors."
+      },
+      {
+        "command": "rg -n \"package:blocpod_logger/\" packages/arch/lib packages/arch/test && rg -n \"package:blocpod_arch/\" packages/logger/lib packages/logger/test",
+        "expected": "forbidden dependency searches print no matches."
+      }
+    ],
+    "validation": [
+      {
+        "command": "node ~/.codex/skills/stenc/scripts/validate-stenc-doc.js docs/stenc/content/specs/2026-06-01-blocpod-riverpod-event-architecture-design.spec.json",
+        "purpose": "Stenc spec JSON schema and required fields are valid."
+      },
+      {
+        "command": "node ~/.codex/skills/stenc/scripts/setup-project.js --project-root \"$(pwd)\" --docs-dir docs/stenc",
+        "purpose": "Regenerate the fixed-format Stenc web pages from JSON source."
+      },
+      {
+        "command": "node ~/.codex/skills/stenc/scripts/check-rendered-pages.js docs/stenc",
+        "purpose": "Confirm this JSON document has a matching rendered web page."
+      }
+    ],
+    "agentInstructions": [
+      "Before changing Blocpod architecture APIs, read this Stenc JSON and the linked Superpowers spec.",
+      "Keep `blocpod_arch` independent from concrete logger packages.",
+      "Keep trace context out of domain params and feature state.",
+      "Do not add generated `@riverpod` controller classes to this architecture without a new decision record.",
+      "When updating this contract, update the related Stenc plan and regenerate `docs/stenc`."
+    ],
+    "reviewChecklist": [
+      "Architecture and logging output remain decoupled.",
+      "Package dependency graph has no cycles.",
+      "Event-controller API remains simple for feature authors.",
+      "Traceability does not leak into domain models.",
+      "Implementation plan can be executed incrementally without changing Pit Wall behavior first."
+    ],
+    "selfReviewChecks": [
+      {
+        "name": "Completeness",
+        "purpose": "Requirements, architecture, components, data flow, error handling, dependency direction, and testing strategy are represented in native Stenc fields."
+      },
+      {
+        "name": "Source fidelity",
+        "purpose": "The Stenc contract preserves the Superpowers spec meaning while linking the original Markdown as source evidence."
+      },
+      {
+        "name": "Agent safety",
+        "purpose": "Agent instructions identify forbidden imports, trace leakage, generated-controller drift, and rendering regeneration requirements."
+      }
+    ],
+    "implementationHandoff": {
+      "planLocation": "docs/stenc/content/plans/2026-06-01-blocpod-riverpod-event-architecture.plan.json",
+      "requiredSkill": "superpowers:executing-plans",
+      "notes": [
+        "Preferred execution route is `superpowers:subagent-driven-development` for one task per worker.",
+        "Inline execution may use `superpowers:executing-plans` with review checkpoints.",
+        "The original Markdown plan remains the detailed code-block source of truth."
+      ]
+    },
+    "supportingSections": [
+      {
+        "heading": "Product Positioning",
+        "content": "Blocpod는 Riverpod replacement가 아니라 Riverpod provider model, `AsyncNotifier`, dependency injection, testing ergonomics를 유지하면서 BLoC-style traceability를 더하는 얇은 event architecture layer다.",
+        "items": [
+          "Name signals BLoC-like Riverpod, not a full BLoC clone.",
+          "Published package names carry the `blocpod_` prefix.",
+          "Local folder names stay short for workspace ergonomics."
+        ],
+        "facts": [
+          {
+            "label": "Core package",
+            "value": "`packages/arch` -> `blocpod_arch`"
+          },
+          {
+            "label": "Logger package",
+            "value": "`packages/logger` -> `blocpod_logger`"
+          },
+          {
+            "label": "Bridge package",
+            "value": "`packages/arch_logger` -> `blocpod_arch_logger`"
+          }
+        ],
+        "links": [],
+        "steps": [],
+        "subSections": []
+      },
+      {
+        "heading": "Pit Wall Migration Outline",
+        "content": "Pit Wall migration is downstream work after Blocpod package tests and docs pass.",
+        "items": [
+          "Create package workspace.",
+          "Move current architecture primitives into `blocpod_arch`.",
+          "Add logger primitives and bridge adapter.",
+          "Update Pit Wall to depend on `blocpod_arch` by local path.",
+          "Replace local core architecture imports with `package:blocpod_arch/blocpod_arch.dart`.",
+          "Remove duplicated local core architecture only after all app and package tests pass.",
+          "Align English and Korean architecture docs plus conventions."
+        ],
+        "facts": [],
+        "links": [
+          {
+            "label": "Original migration section",
+            "target": "docs/superpowers/specs/2026-06-01-blocpod-riverpod-event-architecture-design.md#migration-plan-for-pit-wall",
+            "purpose": "Detailed downstream migration sequence."
+          }
+        ],
+        "steps": [],
+        "subSections": []
+      },
+      {
+        "heading": "Milestones",
+        "content": "Implementation can proceed incrementally without requiring Pit Wall behavior changes first.",
+        "items": [
+          "Milestone 1: Extract core architecture primitives and no-op event logging.",
+          "Milestone 2: Add `TraceContext`, `EventLogRecord`, `EventLogger`, and no-op provider.",
+          "Milestone 3: Add logger packages and adapter mapping tests.",
+          "Milestone 4: Update Pit Wall documentation to point to Blocpod packages."
+        ],
+        "facts": [],
+        "links": [],
+        "steps": [],
+        "subSections": []
+      }
+    ],
+    "openQuestions": []
+  }
+}

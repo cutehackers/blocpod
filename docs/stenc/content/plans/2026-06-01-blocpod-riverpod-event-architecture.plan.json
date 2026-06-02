@@ -1,0 +1,994 @@
+{
+  "schemaVersion": 2,
+  "docType": "plan",
+  "id": "plan:2026-06-01-blocpod-riverpod-event-architecture",
+  "slug": "2026-06-01-blocpod-riverpod-event-architecture",
+  "status": "canonical",
+  "title": "Blocpod Riverpod Event Architecture Implementation Plan",
+  "description": "Blocpod core architecture, generic logger, architecture logger bridge, and documentation alignment을 task-by-task로 실행하는 계획입니다.",
+  "owner": "Blocpod workspace",
+  "createdAt": "2026-06-01",
+  "updatedAt": "2026-06-01",
+  "links": {
+    "sourceOfTruth": [
+      "docs/superpowers/plans/2026-06-01-blocpod-riverpod-event-architecture.md",
+      "docs/stenc/content/specs/2026-06-01-blocpod-riverpod-event-architecture-design.spec.json"
+    ],
+    "relatedSpec": "spec:2026-06-01-blocpod-riverpod-event-architecture-design"
+  },
+  "page": {
+    "humanSummary": "Core, dispatch, trace/logging, logger package, bridge package, docs verification 순서로 Blocpod workspace를 완성합니다.",
+    "agentSummary": "Run this plan task-by-task. Preserve checkbox progress, fail-first tests, expected failures/passes, commits, and final verification from the linked Superpowers plan.",
+    "styleTemplate": "operator-console"
+  },
+  "body": {
+    "goal": "Riverpod event architecture design에서 출발해 core event architecture, standalone logging primitives, bridge logger adapter를 포함한 Blocpod package workspace를 구축한다.",
+    "architecture": "`blocpod_arch` owns `Result`, `UseCase`, event dispatch, trace context, event log records, and no-op logger provider while depending only on Flutter and `flutter_riverpod`. `blocpod_logger` owns generic sink and entry types without importing architecture primitives. `blocpod_arch_logger` maps `EventLogRecord` values to `BlocpodLogEntry` values and is the only package that depends on both sibling packages.",
+    "techStack": [
+      "Dart 3.11",
+      "Flutter",
+      "flutter_riverpod 3.3.1",
+      "flutter_test",
+      "Dart package workspace packages"
+    ],
+    "workerInstructions": {
+      "requiredSubSkills": [
+        "superpowers:subagent-driven-development",
+        "superpowers:executing-plans"
+      ],
+      "trackingSyntax": "- [ ]",
+      "note": "Agentic workers must implement this plan task-by-task and preserve checkbox tracking syntax for every step."
+    },
+    "scopeCheck": {
+      "assessment": "이 계획은 `blocpod` repository만 다룬다. Pit Wall migration은 별도 application repository 작업이므로 여기서는 downstream plan으로 분리한다.",
+      "decomposition": "Core API, dispatch variants, trace/logging, generic logger, bridge adapter, docs/workspace verification의 6개 task plus final verification으로 분해한다."
+    },
+    "currentState": "Repository contains placeholder packages and Superpowers Markdown spec/plan. Stenc app exists under `docs/stenc` but the Superpowers spec and plan need structured JSON sources and rendered pages.",
+    "targetState": "All Blocpod packages expose the specified APIs, tests pass package-by-package, dependency direction is guarded, docs are aligned, and Stenc renders matching spec and plan pages from JSON.",
+    "scope": {
+      "in": [
+        "`packages/arch` core API and tests",
+        "`packages/logger` generic logger API and tests",
+        "`packages/arch_logger` bridge API and tests",
+        "README and architecture/conventions docs alignment",
+        "workspace dependency resolution, formatting, tests, analysis, dependency direction checks"
+      ],
+      "out": [
+        "Pit Wall application migration",
+        "external logger adapters beyond debug print sink",
+        "generated controller architecture",
+        "changing source-of-truth Superpowers Markdown during this Stenc conversion"
+      ]
+    },
+    "fileStructure": [
+      {
+        "action": "Modify",
+        "path": "packages/arch/lib/blocpod_arch.dart",
+        "responsibility": "Public barrel for core package exports."
+      },
+      {
+        "action": "Create",
+        "path": "packages/arch/lib/src/result.dart",
+        "responsibility": "Typed success/error result boundary."
+      },
+      {
+        "action": "Create",
+        "path": "packages/arch/lib/src/use_case.dart",
+        "responsibility": "Use case base class and `NoParams` marker."
+      },
+      {
+        "action": "Create",
+        "path": "packages/arch/lib/src/event_controller.dart",
+        "responsibility": "`EventController`, `EventControllerNotifier`, dispatch lifecycle, and `Ref`/`WidgetRef` dispatch extensions."
+      },
+      {
+        "action": "Create",
+        "path": "packages/arch/lib/src/trace_context.dart",
+        "responsibility": "Zone-backed trace and span correlation for nested dispatches."
+      },
+      {
+        "action": "Create",
+        "path": "packages/arch/lib/src/event_log_record.dart",
+        "responsibility": "Structured event dispatch record and `AsyncValue` state-kind mapping."
+      },
+      {
+        "action": "Create",
+        "path": "packages/arch/lib/src/event_logger.dart",
+        "responsibility": "`EventLogger`, `NoopEventLogger`, and `eventLoggerProvider`."
+      },
+      {
+        "action": "Create",
+        "path": "packages/arch/test/result_use_case_test.dart",
+        "responsibility": "Result and use case contract tests."
+      },
+      {
+        "action": "Create",
+        "path": "packages/arch/test/event_controller_test.dart",
+        "responsibility": "Dispatch routing and provider variant tests."
+      },
+      {
+        "action": "Create",
+        "path": "packages/arch/test/event_logging_test.dart",
+        "responsibility": "Trace, logging, no-op, and thrown-error tests."
+      },
+      {
+        "action": "Create",
+        "path": "packages/arch/test/dependency_direction_test.dart",
+        "responsibility": "Guard that `blocpod_arch` never imports `blocpod_logger`."
+      },
+      {
+        "action": "Modify",
+        "path": "packages/logger/lib/blocpod_logger.dart",
+        "responsibility": "Public barrel for logger package exports."
+      },
+      {
+        "action": "Create",
+        "path": "packages/logger/lib/src/blocpod_log_level.dart",
+        "responsibility": "Log level enum."
+      },
+      {
+        "action": "Create",
+        "path": "packages/logger/lib/src/blocpod_log_entry.dart",
+        "responsibility": "Generic structured log entry."
+      },
+      {
+        "action": "Create",
+        "path": "packages/logger/lib/src/blocpod_log_sink.dart",
+        "responsibility": "Sink interface."
+      },
+      {
+        "action": "Create",
+        "path": "packages/logger/lib/src/debug_print_log_sink.dart",
+        "responsibility": "Flutter `debugPrint` sink and metadata redaction formatter."
+      },
+      {
+        "action": "Create",
+        "path": "packages/logger/test/blocpod_logger_test.dart",
+        "responsibility": "Log entry and debug sink tests."
+      },
+      {
+        "action": "Create",
+        "path": "packages/logger/test/dependency_direction_test.dart",
+        "responsibility": "Guard that `blocpod_logger` never imports `blocpod_arch`."
+      },
+      {
+        "action": "Modify",
+        "path": "packages/arch_logger/lib/blocpod_arch_logger.dart",
+        "responsibility": "Public barrel for bridge package exports."
+      },
+      {
+        "action": "Create",
+        "path": "packages/arch_logger/lib/src/event_log_record_formatter.dart",
+        "responsibility": "Convert architecture event records into generic logger entries."
+      },
+      {
+        "action": "Create",
+        "path": "packages/arch_logger/lib/src/blocpod_event_logger.dart",
+        "responsibility": "`EventLogger` implementation backed by `BlocpodLogSink`."
+      },
+      {
+        "action": "Create",
+        "path": "packages/arch_logger/test/blocpod_arch_logger_test.dart",
+        "responsibility": "Bridge mapping and sink-error isolation tests."
+      },
+      {
+        "action": "Modify",
+        "path": "README.md",
+        "responsibility": "Workspace package summary and local commands."
+      },
+      {
+        "action": "Modify",
+        "path": "packages/*/README.md",
+        "responsibility": "Package-level API summaries and dependency direction."
+      },
+      {
+        "action": "Modify",
+        "path": "docs/ARCHITECTURE.md",
+        "responsibility": "English core architecture source contract."
+      },
+      {
+        "action": "Modify",
+        "path": "docs/ARCHITECTURE-ko.md",
+        "responsibility": "Korean core architecture source contract."
+      },
+      {
+        "action": "Modify",
+        "path": "docs/CONVENTIONS.md",
+        "responsibility": "Logging and import convention alignment."
+      },
+      {
+        "action": "Modify",
+        "path": "pubspec.lock",
+        "responsibility": "Workspace dependency resolution output if dependency graph changes."
+      }
+    ],
+    "slices": [
+      {
+        "id": "task-1",
+        "title": "Core Result And UseCase API",
+        "status": "todo",
+        "surfaces": [
+          "packages/arch/lib/src/result.dart",
+          "packages/arch/lib/src/use_case.dart",
+          "packages/arch/lib/blocpod_arch.dart",
+          "packages/arch/test/result_use_case_test.dart"
+        ],
+        "files": [
+          {
+            "action": "Create",
+            "path": "packages/arch/test/result_use_case_test.dart",
+            "role": "Fail-first tests for typed result branches and `NoParams` use case."
+          },
+          {
+            "action": "Create",
+            "path": "packages/arch/lib/src/result.dart",
+            "role": "`Result<T>`, `Ok<T>`, and `Error<T>` implementation."
+          },
+          {
+            "action": "Create",
+            "path": "packages/arch/lib/src/use_case.dart",
+            "role": "`UseCase<Output, Params>` and `NoParams` implementation."
+          },
+          {
+            "action": "Modify",
+            "path": "packages/arch/lib/blocpod_arch.dart",
+            "role": "Export result and use-case APIs."
+          }
+        ],
+        "steps": [
+          {
+            "id": "task-1-step-1",
+            "title": "Write the failing test",
+            "status": "todo",
+            "instruction": "Create `result_use_case_test.dart` exactly from the source plan to prove `Result`, `Ok`, `Error`, `UseCase`, and `NoParams` are missing before implementation."
+          },
+          {
+            "id": "task-1-step-2",
+            "title": "Run the test to verify it fails",
+            "status": "todo",
+            "command": "cd packages/arch && flutter test test/result_use_case_test.dart",
+            "expected": "FAIL because `Result`, `Ok`, `Error`, `UseCase`, and `NoParams` are not exported yet."
+          },
+          {
+            "id": "task-1-step-3",
+            "title": "Implement `Result<T>`",
+            "status": "todo",
+            "instruction": "Create `packages/arch/lib/src/result.dart` with sealed `Result<T>` plus `Ok<T>` and `Error<T>` branches from the source plan."
+          },
+          {
+            "id": "task-1-step-4",
+            "title": "Implement `UseCase` and `NoParams`",
+            "status": "todo",
+            "instruction": "Create `packages/arch/lib/src/use_case.dart` with the use case base class and marker type from the source plan."
+          },
+          {
+            "id": "task-1-step-5",
+            "title": "Export the public API",
+            "status": "todo",
+            "instruction": "Replace `packages/arch/lib/blocpod_arch.dart` so it exports `src/result.dart` and `src/use_case.dart`."
+          },
+          {
+            "id": "task-1-step-6",
+            "title": "Run the focused test",
+            "status": "todo",
+            "command": "cd packages/arch && flutter test test/result_use_case_test.dart",
+            "expected": "PASS."
+          },
+          {
+            "id": "task-1-step-7",
+            "title": "Commit",
+            "status": "todo",
+            "command": "git add packages/arch/lib packages/arch/test/result_use_case_test.dart && git commit -m \"feat: add blocpod core result and use case\"",
+            "expected": "Commit created for core result and use case."
+          }
+        ],
+        "doneWhen": [
+          "Focused result/use-case test passes.",
+          "`blocpod_arch.dart` exports the new public API.",
+          "Commit message is `feat: add blocpod core result and use case`."
+        ]
+      },
+      {
+        "id": "task-2",
+        "title": "Event Dispatch Boundary And Provider Variants",
+        "status": "todo",
+        "surfaces": [
+          "packages/arch/lib/src/event_controller.dart",
+          "packages/arch/lib/blocpod_arch.dart",
+          "packages/arch/test/event_controller_test.dart"
+        ],
+        "files": [
+          {
+            "action": "Create",
+            "path": "packages/arch/test/event_controller_test.dart",
+            "role": "Fail-first tests for dispatch routing, regular/autoDispose/family providers, and WidgetRef dispatch."
+          },
+          {
+            "action": "Create",
+            "path": "packages/arch/lib/src/event_controller.dart",
+            "role": "`EventController`, `EventControllerNotifier`, `RefEventDispatcherX`, and `WidgetRefEventDispatcherX`."
+          },
+          {
+            "action": "Modify",
+            "path": "packages/arch/lib/blocpod_arch.dart",
+            "role": "Export event controller APIs."
+          }
+        ],
+        "steps": [
+          {
+            "id": "task-2-step-1",
+            "title": "Write the failing dispatch tests",
+            "status": "todo",
+            "instruction": "Create `event_controller_test.dart` from the source plan with regular, autoDispose, family, autoDispose.family, and widget dispatch coverage."
+          },
+          {
+            "id": "task-2-step-2",
+            "title": "Run the dispatch test to verify it fails",
+            "status": "todo",
+            "command": "cd packages/arch && flutter test test/event_controller_test.dart",
+            "expected": "FAIL because event controller types and dispatch extensions are missing."
+          },
+          {
+            "id": "task-2-step-3",
+            "title": "Implement the dispatch boundary",
+            "status": "todo",
+            "instruction": "Create `event_controller.dart` with `dispatch(E event)`, protected `onEvent`, and `Ref`/`WidgetRef` dispatch helpers from the source plan."
+          },
+          {
+            "id": "task-2-step-4",
+            "title": "Export event controller APIs",
+            "status": "todo",
+            "instruction": "Update `blocpod_arch.dart` to export `src/event_controller.dart`, `src/result.dart`, and `src/use_case.dart`."
+          },
+          {
+            "id": "task-2-step-5",
+            "title": "Run the focused dispatch tests",
+            "status": "todo",
+            "command": "cd packages/arch && flutter test test/event_controller_test.dart",
+            "expected": "PASS."
+          },
+          {
+            "id": "task-2-step-6",
+            "title": "Run existing core tests",
+            "status": "todo",
+            "command": "cd packages/arch && flutter test",
+            "expected": "PASS."
+          },
+          {
+            "id": "task-2-step-7",
+            "title": "Commit",
+            "status": "todo",
+            "command": "git add packages/arch/lib packages/arch/test/event_controller_test.dart && git commit -m \"feat: add riverpod event dispatch boundary\"",
+            "expected": "Commit created for Riverpod event dispatch boundary."
+          }
+        ],
+        "doneWhen": [
+          "Focused dispatch tests pass.",
+          "Full `packages/arch` tests pass.",
+          "Provider variants are covered."
+        ]
+      },
+      {
+        "id": "task-3",
+        "title": "Trace Context And Structured Event Logging",
+        "status": "todo",
+        "surfaces": [
+          "packages/arch/lib/src/trace_context.dart",
+          "packages/arch/lib/src/event_log_record.dart",
+          "packages/arch/lib/src/event_logger.dart",
+          "packages/arch/lib/src/event_controller.dart",
+          "packages/arch/lib/blocpod_arch.dart",
+          "packages/arch/test/event_logging_test.dart",
+          "packages/arch/test/dependency_direction_test.dart"
+        ],
+        "files": [
+          {
+            "action": "Create",
+            "path": "packages/arch/test/event_logging_test.dart",
+            "role": "Fail-first tests for no-op logger, before/after state logging, thrown errors, nested traces, and logger failure isolation."
+          },
+          {
+            "action": "Create",
+            "path": "packages/arch/test/dependency_direction_test.dart",
+            "role": "Guard that `blocpod_arch` does not import `blocpod_logger`."
+          },
+          {
+            "action": "Create",
+            "path": "packages/arch/lib/src/trace_context.dart",
+            "role": "Zone-backed trace context and child span support."
+          },
+          {
+            "action": "Create",
+            "path": "packages/arch/lib/src/event_log_record.dart",
+            "role": "Async state kind and structured event log record."
+          },
+          {
+            "action": "Create",
+            "path": "packages/arch/lib/src/event_logger.dart",
+            "role": "Logger interface, no-op logger, and provider."
+          },
+          {
+            "action": "Modify",
+            "path": "packages/arch/lib/src/event_controller.dart",
+            "role": "Wire trace and logging into dispatch."
+          }
+        ],
+        "steps": [
+          {
+            "id": "task-3-step-1",
+            "title": "Write failing event logging tests",
+            "status": "todo",
+            "instruction": "Create tests from the source plan for default no-op logger, state-kind logs, thrown errors, nested dispatch trace id, logger failure isolation, and `TraceContext.run` zone scope."
+          },
+          {
+            "id": "task-3-step-2",
+            "title": "Write dependency direction test",
+            "status": "todo",
+            "instruction": "Create `dependency_direction_test.dart` that scans `lib` for `package:blocpod_logger/` imports."
+          },
+          {
+            "id": "task-3-step-3",
+            "title": "Run tests to verify they fail",
+            "status": "todo",
+            "command": "cd packages/arch && flutter test test/event_logging_test.dart test/dependency_direction_test.dart",
+            "expected": "FAIL because trace, log record, logger APIs, and `metadataFor` are missing."
+          },
+          {
+            "id": "task-3-step-4",
+            "title": "Implement `TraceContext`",
+            "status": "todo",
+            "instruction": "Create `trace_context.dart` with root context, child spans, async-zone current context, and monotonic id sequence from the source plan."
+          },
+          {
+            "id": "task-3-step-5",
+            "title": "Implement event log record types",
+            "status": "todo",
+            "instruction": "Create `event_log_record.dart` with `AsyncValueKind`, `EventLogRecord`, and `asyncValueKindOf`."
+          },
+          {
+            "id": "task-3-step-6",
+            "title": "Implement logger contract and provider",
+            "status": "todo",
+            "instruction": "Create `event_logger.dart` with `EventLogger`, `NoopEventLogger`, and `eventLoggerProvider`."
+          },
+          {
+            "id": "task-3-step-7",
+            "title": "Wire logging into dispatch",
+            "status": "todo",
+            "instruction": "Update `EventControllerNotifier.dispatch` to capture before/after `AsyncValue`, trace context, duration, errors, stack trace, and sanitized `metadataFor(event)` while isolating logger failures."
+          },
+          {
+            "id": "task-3-step-8",
+            "title": "Export trace and logging APIs",
+            "status": "todo",
+            "instruction": "Update `blocpod_arch.dart` to export event controller, event log record, event logger, result, trace context, and use case APIs."
+          },
+          {
+            "id": "task-3-step-9",
+            "title": "Run focused logging tests",
+            "status": "todo",
+            "command": "cd packages/arch && flutter test test/event_logging_test.dart test/dependency_direction_test.dart",
+            "expected": "PASS."
+          },
+          {
+            "id": "task-3-step-10",
+            "title": "Run all core package tests",
+            "status": "todo",
+            "command": "cd packages/arch && flutter test",
+            "expected": "PASS."
+          },
+          {
+            "id": "task-3-step-11",
+            "title": "Commit",
+            "status": "todo",
+            "command": "git add packages/arch/lib packages/arch/test && git commit -m \"feat: add event trace logging contracts\"",
+            "expected": "Commit created for trace logging contracts."
+          }
+        ],
+        "doneWhen": [
+          "Focused logging tests pass.",
+          "Full `packages/arch` tests pass.",
+          "Dependency direction guard passes."
+        ]
+      },
+      {
+        "id": "task-4",
+        "title": "Generic Logger Package",
+        "status": "todo",
+        "surfaces": [
+          "packages/logger/pubspec.yaml",
+          "packages/logger/lib/blocpod_logger.dart",
+          "packages/logger/lib/src/",
+          "packages/logger/test/"
+        ],
+        "files": [
+          {
+            "action": "Modify",
+            "path": "packages/logger/pubspec.yaml",
+            "role": "Flutter and test dependency setup for debug print sink."
+          },
+          {
+            "action": "Create",
+            "path": "packages/logger/test/blocpod_logger_test.dart",
+            "role": "Fail-first tests for structured entries, debug output, and sensitive metadata redaction."
+          },
+          {
+            "action": "Create",
+            "path": "packages/logger/test/dependency_direction_test.dart",
+            "role": "Guard that logger package does not import architecture package."
+          },
+          {
+            "action": "Create",
+            "path": "packages/logger/lib/src/blocpod_log_level.dart",
+            "role": "Severity enum."
+          },
+          {
+            "action": "Create",
+            "path": "packages/logger/lib/src/blocpod_log_entry.dart",
+            "role": "Generic structured log entry."
+          },
+          {
+            "action": "Create",
+            "path": "packages/logger/lib/src/blocpod_log_sink.dart",
+            "role": "Sink interface."
+          },
+          {
+            "action": "Create",
+            "path": "packages/logger/lib/src/debug_print_log_sink.dart",
+            "role": "Debug print sink and safe metadata formatter."
+          }
+        ],
+        "steps": [
+          {
+            "id": "task-4-step-1",
+            "title": "Write failing logger tests",
+            "status": "todo",
+            "instruction": "Create logger tests from the source plan, including dependency direction guard."
+          },
+          {
+            "id": "task-4-step-2",
+            "title": "Run logger tests to verify they fail",
+            "status": "todo",
+            "command": "cd packages/logger && flutter test",
+            "expected": "FAIL because logger APIs and Flutter test dependencies are missing."
+          },
+          {
+            "id": "task-4-step-3",
+            "title": "Update package dependencies for `debugPrint`",
+            "status": "todo",
+            "instruction": "Replace `packages/logger/pubspec.yaml` with the workspace package definition from the source plan."
+          },
+          {
+            "id": "task-4-step-4",
+            "title": "Implement log level",
+            "status": "todo",
+            "instruction": "Create `BlocpodLogLevel` enum with debug, info, warning, and error."
+          },
+          {
+            "id": "task-4-step-5",
+            "title": "Implement log entry",
+            "status": "todo",
+            "instruction": "Create `BlocpodLogEntry` with level, message, timestamp, metadata, error, and stack trace."
+          },
+          {
+            "id": "task-4-step-6",
+            "title": "Implement sink interface",
+            "status": "todo",
+            "instruction": "Create `BlocpodLogSink.write(BlocpodLogEntry entry)`."
+          },
+          {
+            "id": "task-4-step-7",
+            "title": "Implement debug print sink and formatter",
+            "status": "todo",
+            "instruction": "Create `DebugPrintLogSink` and `formatBlocpodLogEntry`, redacting token, secret, credential, and password metadata."
+          },
+          {
+            "id": "task-4-step-8",
+            "title": "Export logger APIs",
+            "status": "todo",
+            "instruction": "Update `blocpod_logger.dart` to export log entry, level, sink, and debug print sink APIs."
+          },
+          {
+            "id": "task-4-step-9",
+            "title": "Run logger tests",
+            "status": "todo",
+            "command": "cd packages/logger && flutter test",
+            "expected": "PASS."
+          },
+          {
+            "id": "task-4-step-10",
+            "title": "Commit",
+            "status": "todo",
+            "command": "git add packages/logger/pubspec.yaml packages/logger/lib packages/logger/test && git commit -m \"feat: add blocpod logger primitives\"",
+            "expected": "Commit created for logger primitives."
+          }
+        ],
+        "doneWhen": [
+          "Logger package tests pass.",
+          "Sensitive metadata is redacted by default.",
+          "`blocpod_logger` has no `blocpod_arch` import."
+        ]
+      },
+      {
+        "id": "task-5",
+        "title": "Architecture Logger Bridge",
+        "status": "todo",
+        "surfaces": [
+          "packages/arch_logger/pubspec.yaml",
+          "packages/arch_logger/lib/blocpod_arch_logger.dart",
+          "packages/arch_logger/lib/src/",
+          "packages/arch_logger/test/blocpod_arch_logger_test.dart"
+        ],
+        "files": [
+          {
+            "action": "Modify",
+            "path": "packages/arch_logger/pubspec.yaml",
+            "role": "Depends on both sibling packages and flutter_test."
+          },
+          {
+            "action": "Create",
+            "path": "packages/arch_logger/test/blocpod_arch_logger_test.dart",
+            "role": "Fail-first tests for record-to-entry mapping, error-level mapping, and sink failure isolation."
+          },
+          {
+            "action": "Create",
+            "path": "packages/arch_logger/lib/src/event_log_record_formatter.dart",
+            "role": "Convert `EventLogRecord` into `BlocpodLogEntry`."
+          },
+          {
+            "action": "Create",
+            "path": "packages/arch_logger/lib/src/blocpod_event_logger.dart",
+            "role": "`EventLogger` implementation backed by `BlocpodLogSink`."
+          },
+          {
+            "action": "Modify",
+            "path": "packages/arch_logger/lib/blocpod_arch_logger.dart",
+            "role": "Export bridge APIs."
+          }
+        ],
+        "steps": [
+          {
+            "id": "task-5-step-1",
+            "title": "Write failing bridge tests",
+            "status": "todo",
+            "instruction": "Create bridge tests from the source plan for `BlocpodEventLogger`, `EventLogRecordFormatter`, error records, and sink failure isolation."
+          },
+          {
+            "id": "task-5-step-2",
+            "title": "Run bridge tests to verify they fail",
+            "status": "todo",
+            "command": "cd packages/arch_logger && flutter test",
+            "expected": "FAIL because bridge APIs and Flutter test dependencies are missing."
+          },
+          {
+            "id": "task-5-step-3",
+            "title": "Update test dependency",
+            "status": "todo",
+            "instruction": "Replace `packages/arch_logger/pubspec.yaml` with dependencies on `blocpod_arch`, `blocpod_logger`, and `flutter_test` from the source plan."
+          },
+          {
+            "id": "task-5-step-4",
+            "title": "Implement formatter",
+            "status": "todo",
+            "instruction": "Create `EventLogRecordFormatter.format` to map level, message, timestamp, trace metadata, state kinds, duration, errors, stack trace, and custom metadata."
+          },
+          {
+            "id": "task-5-step-5",
+            "title": "Implement event logger adapter",
+            "status": "todo",
+            "instruction": "Create `BlocpodEventLogger` that writes formatted entries to a sink and catches sink errors."
+          },
+          {
+            "id": "task-5-step-6",
+            "title": "Export bridge APIs",
+            "status": "todo",
+            "instruction": "Update `blocpod_arch_logger.dart` to export `blocpod_event_logger.dart` and `event_log_record_formatter.dart`."
+          },
+          {
+            "id": "task-5-step-7",
+            "title": "Run bridge tests",
+            "status": "todo",
+            "command": "cd packages/arch_logger && flutter test",
+            "expected": "PASS."
+          },
+          {
+            "id": "task-5-step-8",
+            "title": "Commit",
+            "status": "todo",
+            "command": "git add packages/arch_logger/pubspec.yaml packages/arch_logger/lib packages/arch_logger/test && git commit -m \"feat: add blocpod architecture logger bridge\"",
+            "expected": "Commit created for architecture logger bridge."
+          }
+        ],
+        "doneWhen": [
+          "Bridge tests pass.",
+          "Error records map to error-level entries.",
+          "Sink failure does not break application flow."
+        ]
+      },
+      {
+        "id": "task-6",
+        "title": "Documentation And Workspace Verification",
+        "status": "todo",
+        "surfaces": [
+          "README.md",
+          "packages/arch/README.md",
+          "packages/logger/README.md",
+          "packages/arch_logger/README.md",
+          "docs/ARCHITECTURE.md",
+          "docs/ARCHITECTURE-ko.md",
+          "docs/CONVENTIONS.md",
+          "pubspec.lock"
+        ],
+        "files": [
+          {
+            "action": "Modify",
+            "path": "README.md",
+            "role": "Design link, package bullets, and local commands."
+          },
+          {
+            "action": "Modify",
+            "path": "packages/arch/README.md",
+            "role": "`blocpod_arch` API and dependency summary."
+          },
+          {
+            "action": "Modify",
+            "path": "packages/logger/README.md",
+            "role": "`blocpod_logger` API and no-arch-import summary."
+          },
+          {
+            "action": "Modify",
+            "path": "packages/arch_logger/README.md",
+            "role": "Bridge package summary."
+          },
+          {
+            "action": "Modify",
+            "path": "docs/ARCHITECTURE.md",
+            "role": "English source contract section."
+          },
+          {
+            "action": "Modify",
+            "path": "docs/ARCHITECTURE-ko.md",
+            "role": "Korean source contract section."
+          },
+          {
+            "action": "Modify",
+            "path": "docs/CONVENTIONS.md",
+            "role": "Logging conventions and import example."
+          }
+        ],
+        "steps": [
+          {
+            "id": "task-6-step-1",
+            "title": "Update dependency resolution",
+            "status": "todo",
+            "command": "flutter pub get",
+            "expected": "updates `pubspec.lock` if dependency graph changed."
+          },
+          {
+            "id": "task-6-step-2",
+            "title": "Update root README",
+            "status": "todo",
+            "instruction": "Replace README design sentence, package bullets, and local commands with the text from the source plan."
+          },
+          {
+            "id": "task-6-step-3",
+            "title": "Update package README files",
+            "status": "todo",
+            "instruction": "Replace package README files with the API and dependency-direction summaries from the source plan."
+          },
+          {
+            "id": "task-6-step-4",
+            "title": "Align architecture docs",
+            "status": "todo",
+            "instruction": "Replace English and Korean `Core Architecture Source Contract` sections with the Blocpod package source contract from the source plan."
+          },
+          {
+            "id": "task-6-step-5",
+            "title": "Align conventions docs",
+            "status": "todo",
+            "instruction": "Replace `Logging` conventions and update the internal import example to `package:blocpod_arch/blocpod_arch.dart`."
+          },
+          {
+            "id": "task-6-step-6",
+            "title": "Format all Dart files",
+            "status": "todo",
+            "command": "dart format --line-length 120 packages/arch packages/logger packages/arch_logger",
+            "expected": "formatted files with no syntax errors."
+          },
+          {
+            "id": "task-6-step-7",
+            "title": "Run all package tests",
+            "status": "todo",
+            "command": "cd packages/arch && flutter test && cd ../logger && flutter test && cd ../arch_logger && flutter test",
+            "expected": "all tests PASS."
+          },
+          {
+            "id": "task-6-step-8",
+            "title": "Run workspace analysis",
+            "status": "todo",
+            "command": "flutter analyze",
+            "expected": "no analyzer errors."
+          },
+          {
+            "id": "task-6-step-9",
+            "title": "Review dependency graph manually",
+            "status": "todo",
+            "command": "rg -n \"package:blocpod_logger/\" packages/arch/lib packages/arch/test && rg -n \"package:blocpod_arch/\" packages/logger/lib packages/logger/test",
+            "expected": "first command prints no matches; second command prints no matches."
+          },
+          {
+            "id": "task-6-step-10",
+            "title": "Commit",
+            "status": "todo",
+            "command": "git add README.md docs/ARCHITECTURE.md docs/ARCHITECTURE-ko.md docs/CONVENTIONS.md packages/arch/README.md packages/logger/README.md packages/arch_logger/README.md pubspec.lock && git commit -m \"docs: align blocpod architecture documentation\"",
+            "expected": "Commit created for documentation alignment."
+          }
+        ],
+        "doneWhen": [
+          "Docs reflect package APIs and dependency direction.",
+          "Workspace formatting, tests, analysis, and manual dependency checks pass.",
+          "Documentation alignment commit exists."
+        ]
+      },
+      {
+        "id": "final-verification",
+        "title": "Final Verification",
+        "status": "todo",
+        "surfaces": [
+          "repository root",
+          "all workspace packages"
+        ],
+        "files": [
+          {
+            "action": "Inspect",
+            "path": ".",
+            "role": "Clean-shell verification and repository status."
+          }
+        ],
+        "steps": [
+          {
+            "id": "final-step-1",
+            "title": "Run complete verification from a clean shell",
+            "status": "todo",
+            "command": "flutter pub get && dart pub workspace list && cd packages/arch && flutter test && cd ../logger && flutter test && cd ../arch_logger && flutter test && cd ../.. && flutter analyze && dart format --line-length 120 --set-exit-if-changed packages/arch packages/logger packages/arch_logger",
+            "expected": "dependency resolution succeeds, all tests pass, analyzer passes, and formatter reports no changed files."
+          },
+          {
+            "id": "final-step-2",
+            "title": "Confirm repository status",
+            "status": "todo",
+            "command": "git status -sb",
+            "expected": "clean working tree after the task commits, except for unrelated user-owned files that were already dirty before implementation."
+          }
+        ],
+        "doneWhen": [
+          "Final verification command sequence passes.",
+          "Repository status is understood and reported."
+        ]
+      }
+    ],
+    "executionOrder": [
+      "task-1",
+      "task-2",
+      "task-3",
+      "task-4",
+      "task-5",
+      "task-6",
+      "final-verification"
+    ],
+    "risks": [
+      {
+        "risk": "Generic provider extension types may not cover all Riverpod provider variants.",
+        "mitigation": "Keep provider variant tests in Task 2 and adjust extension signatures only with failing evidence."
+      },
+      {
+        "risk": "Trace/logging can accidentally expose state payloads or secrets.",
+        "mitigation": "Keep `EventLogRecord` payload-free by default and redact sensitive metadata in logger formatter tests."
+      },
+      {
+        "risk": "Logger package dependencies can create a cycle.",
+        "mitigation": "Maintain dependency direction tests and manual `rg` checks in Task 3, Task 4, and Task 6."
+      },
+      {
+        "risk": "Plan execution could drift from the Superpowers source code blocks.",
+        "mitigation": "Use the linked Markdown plan as source-of-truth for exact test and implementation code blocks."
+      }
+    ],
+    "validation": [
+      {
+        "command": "node ~/.codex/skills/stenc/scripts/validate-stenc-doc.js docs/stenc/content/plans/2026-06-01-blocpod-riverpod-event-architecture.plan.json",
+        "purpose": "Validate this Stenc plan JSON and required fields."
+      },
+      {
+        "command": "node ~/.codex/skills/stenc/scripts/setup-project.js --project-root \"$(pwd)\" --docs-dir docs/stenc",
+        "purpose": "Regenerate fixed-format Stenc web pages from JSON source."
+      },
+      {
+        "command": "node ~/.codex/skills/stenc/scripts/check-rendered-pages.js docs/stenc",
+        "purpose": "Confirm this plan JSON has a matching rendered web page."
+      }
+    ],
+    "agentInstructions": [
+      "Use `superpowers:subagent-driven-development` or `superpowers:executing-plans` before executing this plan.",
+      "Preserve fail-first test ordering: write tests, run expected failure, implement, then run expected pass.",
+      "Use the original Markdown plan for exact code blocks whenever a step says 'from the source plan'.",
+      "Run commands from repository root unless a step explicitly changes into `packages/...`.",
+      "Do not mix the downstream Pit Wall migration into this repository plan.",
+      "After editing any Stenc JSON, regenerate `docs/stenc` and run rendered-page checks."
+    ],
+    "selfReviewChecks": [
+      {
+        "name": "Spec coverage",
+        "purpose": "Confirm `blocpod_arch`, `blocpod_logger`, `blocpod_arch_logger`, dependency direction, docs, and verification are all mapped to concrete slices."
+      },
+      {
+        "name": "Placeholder scan",
+        "purpose": "Confirm every slice has concrete paths, commands, expected failures/passes, and commit messages."
+      },
+      {
+        "name": "Type consistency",
+        "purpose": "Confirm `EventControllerNotifier<S, E>`, `AsyncNotifierProvider<N, S>`, `TraceContext`, `EventLogRecord`, `EventLogger`, `BlocpodLogEntry`, and `BlocpodEventLogger` stay consistent across tasks."
+      }
+    ],
+    "executionHandoff": {
+      "defaultPath": "docs/superpowers/plans/2026-06-01-blocpod-riverpod-event-architecture.md",
+      "options": [
+        {
+          "label": "Subagent-Driven",
+          "description": "Dispatch a fresh subagent per task and review between tasks.",
+          "requiredSkill": "superpowers:subagent-driven-development"
+        },
+        {
+          "label": "Inline Execution",
+          "description": "Execute tasks in this session with checkpointed plan execution.",
+          "requiredSkill": "superpowers:executing-plans"
+        }
+      ]
+    },
+    "supportingSections": [
+      {
+        "heading": "No Placeholders",
+        "content": "Every implementation step must contain the actual content an engineer needs. This Stenc plan preserves task structure and points exact code-block execution to the source Markdown plan.",
+        "items": [
+          "Keep commands and expected outputs explicit.",
+          "Keep commit messages explicit.",
+          "Do not replace implementation code with vague descriptions when executing the plan.",
+          "When in doubt, use the linked Markdown plan for exact code blocks."
+        ],
+        "facts": [
+          {
+            "label": "Tracking syntax",
+            "value": "- [ ]"
+          },
+          {
+            "label": "Required worker skill",
+            "value": "superpowers:subagent-driven-development or superpowers:executing-plans"
+          }
+        ],
+        "links": [
+          {
+            "label": "Original Superpowers plan",
+            "target": "docs/superpowers/plans/2026-06-01-blocpod-riverpod-event-architecture.md",
+            "purpose": "Exact tests, implementation code blocks, commands, expected outputs, and commits."
+          }
+        ],
+        "steps": [],
+        "subSections": []
+      },
+      {
+        "heading": "Scope Boundary",
+        "content": "Pit Wall integration is intentionally excluded from this repository execution plan.",
+        "items": [
+          "Finish Blocpod package tests and docs first.",
+          "Create a separate downstream Pit Wall migration plan after Blocpod verification passes.",
+          "Do not remove Pit Wall local architecture files from this repository plan."
+        ],
+        "facts": [],
+        "links": [],
+        "steps": [],
+        "subSections": []
+      }
+    ],
+    "openQuestions": []
+  }
+}
