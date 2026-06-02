@@ -13,7 +13,8 @@ abstract class EventController<E> {
 }
 
 /// Riverpod [AsyncNotifier] base class with a single event dispatch boundary.
-abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements EventController<E> {
+abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
+    implements EventController<E> {
   bool _didLogControllerCreated = false;
   bool _didRegisterControllerDisposed = false;
 
@@ -41,7 +42,11 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
     }
 
     if (previous != null) {
-      _logTransitionSafely(dispatchContext: dispatchContext, previous: previous, next: next);
+      _logTransitionSafely(
+        dispatchContext: dispatchContext,
+        previous: previous,
+        next: next,
+      );
     }
 
     super.state = next;
@@ -55,7 +60,7 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
     final startedAt = DateTime.now().toUtc();
     final safeControllerName = _safeControllerName();
     final safeEventName = _safeEventName(event);
-    final safeMetadata = _safeMetadataFor(event);
+    final safeMetadata = _safeDispatchMetadataFor(event);
     final parentTraceContext = TraceContext.current;
     final traceContext = parentTraceContext == null
         ? TraceContext.root(startedAt: startedAt)
@@ -81,7 +86,12 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
       stackTrace = caughtStackTrace;
       Error.throwWithStackTrace(caughtError, caughtStackTrace);
     } finally {
-      _logEventFinishedSafely(dispatchContext: dispatchContext, before: before, error: error, stackTrace: stackTrace);
+      _logEventFinishedSafely(
+        dispatchContext: dispatchContext,
+        before: before,
+        error: error,
+        stackTrace: stackTrace,
+      );
     }
   }
 
@@ -104,6 +114,14 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
   @protected
   Map<String, Object?> metadataFor(E event) => const {};
 
+  /// Sanitized structured metadata recorded for all records from this controller.
+  ///
+  /// Use this for stable controller/provider identity such as provider names,
+  /// provider variants, feature areas, or family arguments. Values must not
+  /// include secrets, raw state payloads, or other sensitive application data.
+  @protected
+  Map<String, Object?> controllerMetadata() => const {};
+
   /// Optional payload-free state label recorded for state transitions.
   ///
   /// Do not return raw state objects, secrets, or private data.
@@ -115,7 +133,10 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
   /// Values must not include secrets, raw state payloads, or other sensitive
   /// application data.
   @protected
-  Map<String, Object?> stateMetadata({required AsyncValue<S> previous, required AsyncValue<S> next}) {
+  Map<String, Object?> stateMetadata({
+    required AsyncValue<S> previous,
+    required AsyncValue<S> next,
+  }) {
     return const {};
   }
 
@@ -133,6 +154,7 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
         traceContext: traceContext,
         controllerName: _safeControllerName(),
         startedAt: startedAt,
+        metadata: _safeControllerMetadata(),
       ),
     );
   }
@@ -154,12 +176,16 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
           traceContext: traceContext,
           controllerName: _safeControllerName(),
           startedAt: startedAt,
+          metadata: _safeControllerMetadata(),
         ),
       );
     });
   }
 
-  void _logEventStartedSafely({required EventDispatchContext dispatchContext, required AsyncValue<S> before}) {
+  void _logEventStartedSafely({
+    required EventDispatchContext dispatchContext,
+    required AsyncValue<S> before,
+  }) {
     _writeRecordSafely(
       EventLogRecord(
         phase: EventLogPhase.eventStarted,
@@ -208,12 +234,16 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
       final after = state;
       _writeRecordSafely(
         EventLogRecord(
-          phase: error == null ? EventLogPhase.eventCompleted : EventLogPhase.eventFailed,
+          phase: error == null
+              ? EventLogPhase.eventCompleted
+              : EventLogPhase.eventFailed,
           traceContext: dispatchContext.traceContext,
           controllerName: dispatchContext.controllerName,
           eventName: dispatchContext.eventName,
           startedAt: dispatchContext.startedAt,
-          duration: DateTime.now().toUtc().difference(dispatchContext.startedAt),
+          duration: DateTime.now().toUtc().difference(
+            dispatchContext.startedAt,
+          ),
           previousStateKind: asyncValueKindOf(before),
           nextStateKind: asyncValueKindOf(after),
           hasChanged: !identical(before, after),
@@ -271,6 +301,21 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
     }
   }
 
+  Map<String, Object?> _safeDispatchMetadataFor(E event) {
+    return <String, Object?>{
+      ..._safeControllerMetadata(),
+      ..._safeMetadataFor(event),
+    };
+  }
+
+  Map<String, Object?> _safeControllerMetadata() {
+    try {
+      return controllerMetadata();
+    } catch (_) {
+      return const {};
+    }
+  }
+
   Map<String, Object?> _safeMetadataFor(E event) {
     try {
       return metadataFor(event);
@@ -287,7 +332,10 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
     }
   }
 
-  Map<String, Object?> _safeStateMetadata({required AsyncValue<S> previous, required AsyncValue<S> next}) {
+  Map<String, Object?> _safeStateMetadata({
+    required AsyncValue<S> previous,
+    required AsyncValue<S> next,
+  }) {
     try {
       return stateMetadata(previous: previous, next: next);
     } catch (_) {
@@ -299,7 +347,10 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
 /// Dispatch helper for providers and other non-widget Riverpod code.
 extension RefEventDispatcherX on Ref {
   /// Reads [provider]'s notifier and dispatches [event].
-  Future<void> dispatch<N extends EventControllerNotifier<S, E>, S, E>(AsyncNotifierProvider<N, S> provider, E event) {
+  Future<void> dispatch<N extends EventControllerNotifier<S, E>, S, E>(
+    AsyncNotifierProvider<N, S> provider,
+    E event,
+  ) {
     return read(provider.notifier).dispatch(event);
   }
 }
@@ -307,7 +358,10 @@ extension RefEventDispatcherX on Ref {
 /// Dispatch helper for widgets.
 extension WidgetRefEventDispatcherX on WidgetRef {
   /// Reads [provider]'s notifier and dispatches [event].
-  Future<void> dispatch<N extends EventControllerNotifier<S, E>, S, E>(AsyncNotifierProvider<N, S> provider, E event) {
+  Future<void> dispatch<N extends EventControllerNotifier<S, E>, S, E>(
+    AsyncNotifierProvider<N, S> provider,
+    E event,
+  ) {
     return read(provider.notifier).dispatch(event);
   }
 }
