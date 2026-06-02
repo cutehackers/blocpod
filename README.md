@@ -6,7 +6,7 @@ The workspace starts from the design in [docs/superpowers/specs/2026-06-01-blocp
 
 ## Packages
 
-- `packages/arch` (`blocpod_arch`): `Result`, `UseCase`, `EventControllerNotifier`, dispatch extensions, trace context, event records, and no-op event logger provider.
+- `packages/arch` (`blocpod_arch`): `Result`, `UseCase`, `EventControllerNotifier`, dispatch extensions, trace context, observer records, and no-op event logger provider.
 - `packages/logger` (`blocpod_logger`): generic log entries, log levels, log sinks, debug print output, and local-development formatting.
 - `packages/arch_logger` (`blocpod_arch_logger`): `EventLogger` adapter that maps `EventLogRecord` values to `BlocpodLogEntry` values.
 
@@ -28,3 +28,4 @@ dart format --line-length 120 .
 - `blocpod_logger` must not depend on `blocpod_arch`.
 - `blocpod_arch_logger` is the only package that knows both sides.
 - Logger support is installed through sibling packages and provider overrides, not optional imports.
+- Controller observability is payload-free by default and records lifecycle, event, transition, completion, and failure phases.

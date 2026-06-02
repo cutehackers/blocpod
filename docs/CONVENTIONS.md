@@ -26,7 +26,9 @@ Avoid importing private `src/` files from other packages.
 
 - Core event logging flows through `EventControllerNotifier.dispatch`.
 - `blocpod_arch` emits `EventLogRecord` values through `eventLoggerProvider`.
+- Controller logs include lifecycle, event start, per-`state = ...` transition, event completion, and event failure phases.
 - The default logger is `NoopEventLogger`.
 - Applications install concrete logging through provider overrides, such as `BlocpodEventLogger(DebugPrintLogSink())`.
 - Keep verbose or diagnostic metadata sanitized.
+- Use `stateLabel` and `stateMetadata` only for payload-free state summaries.
 - Do not log secrets, tokens, credentials, passwords, or full raw payloads that may contain private data.

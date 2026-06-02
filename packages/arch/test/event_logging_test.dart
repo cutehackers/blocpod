@@ -1,4 +1,5 @@
 import 'package:blocpod_arch/blocpod_arch.dart';
+import 'package:blocpod_arch/src/event_dispatch_context.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -28,6 +29,26 @@ final class ThrowMetadataEvent extends LoggingEvent {
 
 final class ThrowEventAndMetadataEvent extends LoggingEvent {
   const ThrowEventAndMetadataEvent();
+}
+
+final class ThrowAfterStateEvent extends LoggingEvent {
+  const ThrowAfterStateEvent();
+}
+
+final class MultiStepEvent extends LoggingEvent {
+  const MultiStepEvent();
+}
+
+final class ThrowStateSummaryEvent extends LoggingEvent {
+  const ThrowStateSummaryEvent();
+}
+
+final class ConcurrentFirstEvent extends LoggingEvent {
+  const ConcurrentFirstEvent();
+}
+
+final class ConcurrentSecondEvent extends LoggingEvent {
+  const ConcurrentSecondEvent();
 }
 
 final loggingProvider = AsyncNotifierProvider<LoggingController, int>(LoggingController.new);
@@ -62,6 +83,22 @@ final class LoggingController extends EventControllerNotifier<int, LoggingEvent>
         state = const AsyncData(20);
       case ThrowEventAndMetadataEvent():
         throw StateError('handler failed');
+      case ThrowAfterStateEvent():
+        state = const AsyncData(30);
+        throw StateError('state changed then failed');
+      case MultiStepEvent():
+        state = const AsyncData(1);
+        state = const AsyncLoading<int>();
+        await Future<void>.delayed(Duration.zero);
+        state = const AsyncData(3);
+      case ThrowStateSummaryEvent():
+        state = const AsyncData(404);
+      case ConcurrentFirstEvent():
+        await Future<void>.delayed(Duration.zero);
+        state = const AsyncData(100);
+      case ConcurrentSecondEvent():
+        state = const AsyncData(200);
+        await Future<void>.delayed(Duration.zero);
     }
   }
 
@@ -74,7 +111,30 @@ final class LoggingController extends EventControllerNotifier<int, LoggingEvent>
       ChildEvent() => const {'kind': 'child'},
       ThrowMetadataEvent() => throw StateError('metadata failed'),
       ThrowEventAndMetadataEvent() => throw StateError('metadata failed'),
+      ThrowAfterStateEvent() => const {'kind': 'throw-after-state'},
+      MultiStepEvent() => const {'kind': 'multi-step'},
+      ThrowStateSummaryEvent() => const {'kind': 'throw-state-summary'},
+      ConcurrentFirstEvent() => const {'kind': 'concurrent-first'},
+      ConcurrentSecondEvent() => const {'kind': 'concurrent-second'},
     };
+  }
+
+  @override
+  String? stateLabel(AsyncValue<int> state) {
+    return switch (state) {
+      AsyncLoading<int>() => 'loading',
+      AsyncError<int>() => 'error',
+      AsyncData<int>(value: 404) => throw StateError('state label failed'),
+      AsyncData<int>(:final value) => 'value:$value',
+    };
+  }
+
+  @override
+  Map<String, Object?> stateMetadata({required AsyncValue<int> previous, required AsyncValue<int> next}) {
+    if (next case AsyncData<int>(value: 404)) {
+      throw StateError('state metadata failed');
+    }
+    return <String, Object?>{'previousKind': asyncValueKindOf(previous).name, 'nextKind': asyncValueKindOf(next).name};
   }
 }
 
@@ -146,15 +206,124 @@ void main() {
 
     await container.read(loggingProvider.notifier).dispatch(const IncrementEvent());
 
-    expect(logger.records, hasLength(1));
-    expect(logger.records.single.controllerName, 'LoggingController');
-    expect(logger.records.single.eventName, 'IncrementEvent');
-    expect(logger.records.single.beforeStateKind, AsyncValueKind.data);
-    expect(logger.records.single.afterStateKind, AsyncValueKind.data);
-    expect(logger.records.single.hasChanged, isTrue);
-    expect(logger.records.single.metadata, containsPair('kind', 'increment'));
-    expect(logger.records.single.error, isNull);
-    expect(logger.records.single.stackTrace, isNull);
+    final completed = logger.records.singleWhere((record) => record.phase == EventLogPhase.eventCompleted);
+    expect(completed.controllerName, 'LoggingController');
+    expect(completed.eventName, 'IncrementEvent');
+    expect(completed.previousStateKind, AsyncValueKind.data);
+    expect(completed.nextStateKind, AsyncValueKind.data);
+    expect(completed.hasChanged, isTrue);
+    expect(completed.metadata, containsPair('kind', 'increment'));
+    expect(completed.error, isNull);
+    expect(completed.stackTrace, isNull);
+  });
+
+  test('dispatch logs each state assignment as ordered transition records', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+
+    await container.read(loggingProvider.notifier).dispatch(const MultiStepEvent());
+
+    final eventRecords = logger.records.where((record) => record.eventName == 'MultiStepEvent').toList();
+    expect(eventRecords.map((record) => record.phase), <EventLogPhase>[
+      EventLogPhase.eventStarted,
+      EventLogPhase.transition,
+      EventLogPhase.transition,
+      EventLogPhase.transition,
+      EventLogPhase.eventCompleted,
+    ]);
+
+    final transitions = eventRecords.where((record) => record.phase == EventLogPhase.transition).toList();
+    expect(transitions.map((record) => record.transitionIndex), <int>[1, 2, 3]);
+    expect(transitions.map((record) => record.previousStateKind), <AsyncValueKind>[
+      AsyncValueKind.data,
+      AsyncValueKind.data,
+      AsyncValueKind.loading,
+    ]);
+    expect(transitions.map((record) => record.nextStateKind), <AsyncValueKind>[
+      AsyncValueKind.data,
+      AsyncValueKind.loading,
+      AsyncValueKind.data,
+    ]);
+    expect(transitions.first.previousStateLabel, 'value:0');
+    expect(transitions.first.nextStateLabel, 'value:1');
+    expect(transitions.first.stateMetadata, containsPair('previousKind', 'data'));
+    expect(transitions.first.stateMetadata, containsPair('nextKind', 'data'));
+
+    final completed = eventRecords.last;
+    expect(completed.previousStateKind, AsyncValueKind.data);
+    expect(completed.nextStateKind, AsyncValueKind.data);
+    expect(completed.hasChanged, isTrue);
+    expect(completed.duration, isNotNull);
+  });
+
+  test('logs controller lifecycle without event payloads', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+
+    await container.read(loggingProvider.future);
+    container.dispose();
+
+    final lifecyclePhases = logger.records
+        .where(
+          (record) =>
+              record.phase == EventLogPhase.controllerCreated || record.phase == EventLogPhase.controllerDisposed,
+        )
+        .map((record) => record.phase)
+        .toList();
+    expect(lifecyclePhases, <EventLogPhase>[EventLogPhase.controllerCreated, EventLogPhase.controllerDisposed]);
+    expect(logger.records.where((record) => record.phase == EventLogPhase.controllerCreated).single.eventName, isNull);
+    expect(logger.records.where((record) => record.phase == EventLogPhase.controllerDisposed).single.eventName, isNull);
+  });
+
+  test('lifecycle logger failures do not break provider creation or disposal', () async {
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(ThrowingEventLogger())]);
+
+    await container.read(loggingProvider.future);
+
+    expect(container.dispose, returnsNormally);
+  });
+
+  test('concurrent dispatches keep transition attribution in their async zones', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+
+    await Future.wait(<Future<void>>[
+      container.read(loggingProvider.notifier).dispatch(const ConcurrentFirstEvent()),
+      container.read(loggingProvider.notifier).dispatch(const ConcurrentSecondEvent()),
+    ]);
+
+    final firstTransitions = logger.records
+        .where((record) => record.phase == EventLogPhase.transition && record.eventName == 'ConcurrentFirstEvent')
+        .toList();
+    final secondTransitions = logger.records
+        .where((record) => record.phase == EventLogPhase.transition && record.eventName == 'ConcurrentSecondEvent')
+        .toList();
+
+    expect(firstTransitions, hasLength(1));
+    expect(secondTransitions, hasLength(1));
+    expect(firstTransitions.single.transitionIndex, 1);
+    expect(secondTransitions.single.transitionIndex, 1);
+    expect(firstTransitions.single.metadata, containsPair('kind', 'concurrent-first'));
+    expect(secondTransitions.single.metadata, containsPair('kind', 'concurrent-second'));
+    expect(firstTransitions.single.traceContext.traceId, isNot(secondTransitions.single.traceContext.traceId));
+  });
+
+  test('state summary failures do not break transitions', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+
+    await container.read(loggingProvider.notifier).dispatch(const ThrowStateSummaryEvent());
+
+    final transition = logger.records.singleWhere(
+      (record) => record.phase == EventLogPhase.transition && record.eventName == 'ThrowStateSummaryEvent',
+    );
+    expect(transition.previousStateLabel, 'value:0');
+    expect(transition.nextStateLabel, isNull);
+    expect(transition.stateMetadata, isEmpty);
+    expect(container.read(loggingProvider), isA<AsyncData<int>>().having((value) => value.value, 'value', 404));
   });
 
   test('dispatch logs thrown errors and preserves the original stack trace', () async {
@@ -167,10 +336,34 @@ void main() {
       throwsA(isA<StateError>()),
     );
 
-    expect(logger.records, hasLength(1));
-    expect(logger.records.single.eventName, 'ThrowEvent');
-    expect(logger.records.single.error, isA<StateError>());
-    expect(logger.records.single.stackTrace, isNotNull);
+    final failed = logger.records.singleWhere((record) => record.phase == EventLogPhase.eventFailed);
+    expect(failed.eventName, 'ThrowEvent');
+    expect(failed.error, isA<StateError>());
+    expect(failed.stackTrace, isNotNull);
+  });
+
+  test('event failure logs final state after transitions', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+
+    await expectLater(
+      container.read(loggingProvider.notifier).dispatch(const ThrowAfterStateEvent()),
+      throwsA(isA<StateError>().having((error) => error.message, 'message', 'state changed then failed')),
+    );
+
+    final eventRecords = logger.records.where((record) => record.eventName == 'ThrowAfterStateEvent').toList();
+    expect(eventRecords.map((record) => record.phase), <EventLogPhase>[
+      EventLogPhase.eventStarted,
+      EventLogPhase.transition,
+      EventLogPhase.eventFailed,
+    ]);
+
+    final failed = eventRecords.singleWhere((record) => record.phase == EventLogPhase.eventFailed);
+    expect(failed.previousStateKind, AsyncValueKind.data);
+    expect(failed.nextStateKind, AsyncValueKind.data);
+    expect(failed.hasChanged, isTrue);
+    expect(container.read(loggingProvider), isA<AsyncData<int>>().having((value) => value.value, 'value', 30));
   });
 
   test('nested dispatches keep one trace id and create child spans', () async {
@@ -180,8 +373,12 @@ void main() {
 
     await container.read(loggingProvider.notifier).dispatch(const ParentEvent());
 
-    final parent = logger.records.singleWhere((record) => record.eventName == 'ParentEvent');
-    final child = logger.records.singleWhere((record) => record.eventName == 'ChildEvent');
+    final parent = logger.records.singleWhere(
+      (record) => record.eventName == 'ParentEvent' && record.phase == EventLogPhase.eventCompleted,
+    );
+    final child = logger.records.singleWhere(
+      (record) => record.eventName == 'ChildEvent' && record.phase == EventLogPhase.eventCompleted,
+    );
 
     expect(child.traceContext.traceId, parent.traceContext.traceId);
     expect(parent.traceContext.traceId, startsWith('trace-'));
@@ -211,14 +408,11 @@ void main() {
       throwsA(isA<StateError>().having((error) => error.message, 'message', 'handler failed')),
     );
 
-    expect(logger.records, hasLength(1));
-    expect(logger.records.single.eventName, 'ThrowEventAndMetadataEvent');
-    expect(
-      logger.records.single.error,
-      isA<StateError>().having((error) => error.message, 'message', 'handler failed'),
-    );
-    expect(logger.records.single.stackTrace, isNotNull);
-    expect(logger.records.single.metadata, isEmpty);
+    final failed = logger.records.singleWhere((record) => record.phase == EventLogPhase.eventFailed);
+    expect(failed.eventName, 'ThrowEventAndMetadataEvent');
+    expect(failed.error, isA<StateError>().having((error) => error.message, 'message', 'handler failed'));
+    expect(failed.stackTrace, isNotNull);
+    expect(failed.metadata, isEmpty);
   });
 
   test('logger failures do not break application flow', () async {
@@ -237,8 +431,30 @@ void main() {
 
     await container.read(explodingEqualityProvider.notifier).dispatch(const ExplodingEqualityEvent());
 
-    expect(logger.records, hasLength(1));
-    expect(logger.records.single.hasChanged, isTrue);
+    final completed = logger.records.singleWhere((record) => record.phase == EventLogPhase.eventCompleted);
+    expect(completed.hasChanged, isTrue);
+  });
+
+  test('EventLogRecord snapshots metadata maps', () {
+    final metadata = <String, Object?>{'kind': 'original'};
+    final stateMetadata = <String, Object?>{'state': 'ready'};
+    final record = EventLogRecord(
+      phase: EventLogPhase.transition,
+      traceContext: TraceContext.root(startedAt: DateTime.utc(2026, 6)),
+      controllerName: 'LoggingController',
+      eventName: 'IncrementEvent',
+      startedAt: DateTime.utc(2026, 6),
+      metadata: metadata,
+      stateMetadata: stateMetadata,
+    );
+
+    metadata['kind'] = 'mutated';
+    stateMetadata['state'] = 'mutated';
+
+    expect(record.metadata, containsPair('kind', 'original'));
+    expect(record.stateMetadata, containsPair('state', 'ready'));
+    expect(() => record.metadata['kind'] = 'changed', throwsUnsupportedError);
+    expect(() => record.stateMetadata['state'] = 'changed', throwsUnsupportedError);
   });
 
   test('TraceContext.run exposes current context only inside the async zone', () async {
@@ -250,5 +466,40 @@ void main() {
       expect(TraceContext.current, same(context));
     });
     expect(TraceContext.current, isNull);
+  });
+
+  test('EventDispatchContext.run exposes current context inside the async zone', () async {
+    final traceContext = TraceContext.root(startedAt: DateTime.utc(2026, 6));
+    final dispatchContext = EventDispatchContext(
+      traceContext: traceContext,
+      controllerName: 'LoggingController',
+      eventName: 'IncrementEvent',
+      startedAt: traceContext.startedAt,
+    );
+
+    expect(EventDispatchContext.current, isNull);
+    await EventDispatchContext.run(dispatchContext, () async {
+      await Future<void>.delayed(Duration.zero);
+      expect(TraceContext.current, same(traceContext));
+      expect(EventDispatchContext.current, same(dispatchContext));
+    });
+    expect(EventDispatchContext.current, isNull);
+  });
+
+  test('EventDispatchContext snapshots metadata maps', () {
+    final metadata = <String, Object?>{'kind': 'original'};
+    final traceContext = TraceContext.root(startedAt: DateTime.utc(2026, 6));
+    final dispatchContext = EventDispatchContext(
+      traceContext: traceContext,
+      controllerName: 'LoggingController',
+      eventName: 'IncrementEvent',
+      startedAt: traceContext.startedAt,
+      metadata: metadata,
+    );
+
+    metadata['kind'] = 'mutated';
+
+    expect(dispatchContext.metadata, containsPair('kind', 'original'));
+    expect(() => dispatchContext.metadata['kind'] = 'changed', throwsUnsupportedError);
   });
 }

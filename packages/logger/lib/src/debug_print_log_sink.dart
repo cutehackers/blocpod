@@ -37,6 +37,12 @@ String formatBlocpodLogEntry(BlocpodLogEntry entry) {
       ..write(entry.error);
   }
 
+  if (entry.stackTrace != null) {
+    buffer
+      ..write(' stackTrace=')
+      ..write(entry.stackTrace);
+  }
+
   return buffer.toString();
 }
 

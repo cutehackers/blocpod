@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
-const _traceContextZoneKey = Object();
+final Object _traceContextZoneKey = Object();
 
 /// Trace identity for a dispatched event span.
 final class TraceContext {
@@ -41,8 +41,8 @@ final class TraceContext {
   }
 
   /// Runs [body] with [context] available as [current].
-  static R run<R>(TraceContext context, R Function() body) {
-    return runZoned(body, zoneValues: {_traceContextZoneKey: context});
+  static R run<R>(TraceContext context, R Function() body, {Map<Object?, Object?> zoneValues = const {}}) {
+    return runZoned(body, zoneValues: <Object?, Object?>{...zoneValues, _traceContextZoneKey: context});
   }
 
   /// Creates a child span in this trace.

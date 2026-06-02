@@ -98,4 +98,20 @@ void main() {
     expect(formatted, isNot(contains('hidden')));
     expect(formatted, isNot(contains('cred')));
   });
+
+  test('formatting includes stack traces for error entries', () {
+    final formatted = formatBlocpodLogEntry(
+      BlocpodLogEntry(
+        level: BlocpodLogLevel.error,
+        message: 'failed',
+        timestamp: DateTime.utc(2026, 6),
+        error: StateError('boom'),
+        stackTrace: StackTrace.fromString('line 1\nline 2'),
+      ),
+    );
+
+    expect(formatted, contains('error=Bad state: boom'));
+    expect(formatted, contains('stackTrace=line 1'));
+    expect(formatted, contains('line 2'));
+  });
 }
