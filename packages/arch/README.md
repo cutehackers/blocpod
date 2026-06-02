@@ -4,10 +4,12 @@ Core Riverpod event architecture package for Blocpod.
 
 This package owns:
 
-- `EventController`
-- `EventControllerNotifier`
-- `ref.dispatch(...)` extensions
-- `Result<T>` and `UseCase`
-- trace and event logging contracts
+- `Result<T>`, `Ok<T>`, and `Error<T>`
+- `UseCase<Output, Params>` and `NoParams`
+- `EventController<E>` and `EventControllerNotifier<S, E>`
+- `RefEventDispatcherX` and `WidgetRefEventDispatcherX`
+- `TraceContext`
+- `EventLogRecord` and `AsyncValueKind`
+- `EventLogger`, `NoopEventLogger`, and `eventLoggerProvider`
 
-It must not depend on `blocpod_logger` or any concrete logger package.
+`blocpod_arch` depends on Flutter and `flutter_riverpod`. It must not depend on `blocpod_logger` or any concrete logging sink.
