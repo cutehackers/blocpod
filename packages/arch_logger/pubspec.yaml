@@ -1,7 +1,14 @@
 name: blocpod_arch_logger
-description: Bridge adapter between blocpod_arch event records and blocpod_logger sinks.
+description: Adapter that maps blocpod_arch event records into blocpod_logger log entries and sinks.
 version: 0.1.0
-publish_to: none
+repository: https://github.com/cutehackers/blocpod
+issue_tracker: https://github.com/cutehackers/blocpod/issues
+topics:
+  - flutter
+  - riverpod
+  - logging
+  - observability
+  - state-management
 
 environment:
   sdk: ^3.11.5
@@ -9,10 +16,8 @@ environment:
 resolution: workspace
 
 dependencies:
-  blocpod_arch:
-    path: ../arch
-  blocpod_logger:
-    path: ../logger
+  blocpod_arch: ^0.1.0
+  blocpod_logger: ^0.1.0
 
 dev_dependencies:
   flutter_test:

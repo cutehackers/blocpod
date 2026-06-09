@@ -1,7 +1,14 @@
 name: blocpod_logger
-description: Generic logging primitives for Blocpod.
+description: Generic log entries, levels, sinks, formatting, and redaction helpers for Blocpod packages.
 version: 0.1.0
-publish_to: none
+repository: https://github.com/cutehackers/blocpod
+issue_tracker: https://github.com/cutehackers/blocpod/issues
+topics:
+  - flutter
+  - logging
+  - observability
+  - debugging
+  - diagnostics
 
 environment:
   sdk: ^3.11.5

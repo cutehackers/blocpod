@@ -9,9 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   test('sample log sink stores formatted Blocpod log entries', () async {
     final sink = InMemoryLogSink();
-    final container = ProviderContainer(
-      overrides: [eventLoggerProvider.overrideWithValue(BlocpodEventLogger(sink))],
-    );
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(BlocpodEventLogger(sink))]);
     addTearDown(container.dispose);
 
     await container.read(counterProvider.notifier).dispatch(const CounterIncremented(1));

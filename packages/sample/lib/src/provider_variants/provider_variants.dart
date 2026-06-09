@@ -5,30 +5,18 @@ final class VariantIncremented {
   const VariantIncremented();
 }
 
-final regularVariantProvider =
-    AsyncNotifierProvider<VariantCounterController, int>(
-      () => VariantCounterController(
-        providerName: 'regularVariantProvider',
-        providerKind: 'regular',
-      ),
-    );
+final regularVariantProvider = AsyncNotifierProvider<VariantCounterController, int>(
+  () => VariantCounterController(providerName: 'regularVariantProvider', providerKind: 'regular'),
+);
 
-final autoDisposeVariantProvider =
-    AsyncNotifierProvider.autoDispose<VariantCounterController, int>(
-      () => VariantCounterController(
-        providerName: 'autoDisposeVariantProvider',
-        providerKind: 'autoDispose',
-      ),
-    );
+final autoDisposeVariantProvider = AsyncNotifierProvider.autoDispose<VariantCounterController, int>(
+  () => VariantCounterController(providerName: 'autoDisposeVariantProvider', providerKind: 'autoDispose'),
+);
 
-final familyVariantProvider =
-    AsyncNotifierProvider.family<FamilyVariantCounterController, int, int>(
-      (initialValue) => FamilyVariantCounterController(
-        initialValue,
-        providerName: 'familyVariantProvider',
-        providerKind: 'family',
-      ),
-    );
+final familyVariantProvider = AsyncNotifierProvider.family<FamilyVariantCounterController, int, int>(
+  (initialValue) =>
+      FamilyVariantCounterController(initialValue, providerName: 'familyVariantProvider', providerKind: 'family'),
+);
 
 final autoDisposeFamilyVariantProvider = AsyncNotifierProvider.autoDispose
     .family<FamilyVariantCounterController, int, int>(
@@ -47,30 +35,16 @@ final autoDisposeVariantDispatchProvider = Provider<Future<void>>((ref) {
   return ref.dispatch(autoDisposeVariantProvider, const VariantIncremented());
 });
 
-final familyVariantDispatchProvider = Provider.family<Future<void>, int>((
-  ref,
-  initialValue,
-) {
-  return ref.dispatch(
-    familyVariantProvider(initialValue),
-    const VariantIncremented(),
-  );
+final familyVariantDispatchProvider = Provider.family<Future<void>, int>((ref, initialValue) {
+  return ref.dispatch(familyVariantProvider(initialValue), const VariantIncremented());
 });
 
-final autoDisposeFamilyVariantDispatchProvider =
-    Provider.family<Future<void>, int>((ref, initialValue) {
-      return ref.dispatch(
-        autoDisposeFamilyVariantProvider(initialValue),
-        const VariantIncremented(),
-      );
-    });
+final autoDisposeFamilyVariantDispatchProvider = Provider.family<Future<void>, int>((ref, initialValue) {
+  return ref.dispatch(autoDisposeFamilyVariantProvider(initialValue), const VariantIncremented());
+});
 
-final class VariantCounterController
-    extends EventControllerNotifier<int, VariantIncremented> {
-  VariantCounterController({
-    required this.providerName,
-    required this.providerKind,
-  });
+final class VariantCounterController extends EventControllerNotifier<int, VariantIncremented> {
+  VariantCounterController({required this.providerName, required this.providerKind});
 
   final String providerName;
   final String providerKind;
@@ -98,13 +72,8 @@ final class VariantCounterController
   }
 }
 
-final class FamilyVariantCounterController
-    extends EventControllerNotifier<int, VariantIncremented> {
-  FamilyVariantCounterController(
-    this.initialValue, {
-    required this.providerName,
-    required this.providerKind,
-  });
+final class FamilyVariantCounterController extends EventControllerNotifier<int, VariantIncremented> {
+  FamilyVariantCounterController(this.initialValue, {required this.providerName, required this.providerKind});
 
   final int initialValue;
   final String providerName;

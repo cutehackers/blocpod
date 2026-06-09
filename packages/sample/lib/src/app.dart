@@ -86,18 +86,9 @@ final class CounterPanel extends ConsumerWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              FilledButton(
-                onPressed: () => notifier.dispatch(const CounterIncremented(1)),
-                child: const Text('+1'),
-              ),
-              OutlinedButton(
-                onPressed: () => notifier.dispatch(const CounterDecremented()),
-                child: const Text('-1'),
-              ),
-              OutlinedButton(
-                onPressed: () => notifier.dispatch(const CounterReset()),
-                child: const Text('Reset'),
-              ),
+              FilledButton(onPressed: () => notifier.dispatch(const CounterIncremented(1)), child: const Text('+1')),
+              OutlinedButton(onPressed: () => notifier.dispatch(const CounterDecremented()), child: const Text('-1')),
+              OutlinedButton(onPressed: () => notifier.dispatch(const CounterReset()), child: const Text('Reset')),
             ],
           ),
         ],
@@ -131,8 +122,7 @@ final class TodoPanel extends ConsumerWidget {
                 child: const Text('Load todos'),
               ),
               OutlinedButton(
-                onPressed: () =>
-                    notifier.dispatch(const TodoAdded('Try Blocpod')),
+                onPressed: () => notifier.dispatch(const TodoAdded('Try Blocpod')),
                 child: const Text('Add todo'),
               ),
             ],
@@ -162,9 +152,7 @@ final class ProviderVariantsPanel extends ConsumerWidget {
       AsyncData(:final value) => value,
       _ => 10,
     };
-    final autoDisposeFamily = switch (ref.watch(
-      autoDisposeFamilyVariantProvider(20),
-    )) {
+    final autoDisposeFamily = switch (ref.watch(autoDisposeFamilyVariantProvider(20))) {
       AsyncData(:final value) => value,
       _ => 20,
     };
@@ -190,31 +178,19 @@ final class ProviderVariantsPanel extends ConsumerWidget {
             runSpacing: 8,
             children: [
               FilledButton.tonal(
-                onPressed: () => ref.dispatch(
-                  regularVariantProvider,
-                  const VariantIncremented(),
-                ),
+                onPressed: () => ref.dispatch(regularVariantProvider, const VariantIncremented()),
                 child: const Text('Regular'),
               ),
               OutlinedButton(
-                onPressed: () => ref.dispatch(
-                  autoDisposeVariantProvider,
-                  const VariantIncremented(),
-                ),
+                onPressed: () => ref.dispatch(autoDisposeVariantProvider, const VariantIncremented()),
                 child: const Text('Auto dispose'),
               ),
               OutlinedButton(
-                onPressed: () => ref.dispatch(
-                  familyVariantProvider(10),
-                  const VariantIncremented(),
-                ),
+                onPressed: () => ref.dispatch(familyVariantProvider(10), const VariantIncremented()),
                 child: const Text('Family'),
               ),
               OutlinedButton(
-                onPressed: () => ref.dispatch(
-                  autoDisposeFamilyVariantProvider(20),
-                  const VariantIncremented(),
-                ),
+                onPressed: () => ref.dispatch(autoDisposeFamilyVariantProvider(20), const VariantIncremented()),
                 child: const Text('Auto family'),
               ),
             ],
@@ -253,10 +229,7 @@ final class EventLogPanel extends ConsumerWidget {
                     children: [
                       Text(entry.message),
                       if (_visibleMetadata(entry.metadata).isNotEmpty)
-                        Text(
-                          _visibleMetadata(entry.metadata),
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
+                        Text(_visibleMetadata(entry.metadata), style: Theme.of(context).textTheme.bodySmall),
                     ],
                   ),
                 ),
@@ -287,11 +260,7 @@ const Set<String> _reservedLogMetadataKeys = <String>{
 
 String _visibleMetadata(Map<String, Object?> metadata) {
   return metadata.entries
-      .where(
-        (entry) =>
-            !_reservedLogMetadataKeys.contains(entry.key) &&
-            entry.value != null,
-      )
+      .where((entry) => !_reservedLogMetadataKeys.contains(entry.key) && entry.value != null)
       .map((entry) => '${entry.key}=${entry.value}')
       .join(' | ');
 }

@@ -3,9 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  testWidgets('sample app panels dispatch events and show live logs', (
-    tester,
-  ) async {
+  testWidgets('sample app panels dispatch events and show live logs', (tester) async {
     await tester.pumpWidget(const BlocpodSampleApp());
 
     expect(find.text('Counter events'), findsOneWidget);
@@ -38,20 +36,12 @@ void main() {
     await tester.pump();
 
     expect(find.text('Regular: 2'), findsOneWidget);
-    expect(
-      _textContaining('VariantCounterController'),
-      findsAtLeastNWidgets(1),
-    );
-    expect(
-      _textContaining('providerName=regularVariantProvider'),
-      findsAtLeastNWidgets(1),
-    );
+    expect(_textContaining('VariantCounterController'), findsAtLeastNWidgets(1));
+    expect(_textContaining('providerName=regularVariantProvider'), findsAtLeastNWidgets(1));
     expect(_textContaining('providerKind=regular'), findsAtLeastNWidgets(1));
   });
 }
 
 Finder _textContaining(String value) {
-  return find.byWidgetPredicate(
-    (widget) => widget is Text && widget.data?.contains(value) == true,
-  );
+  return find.byWidgetPredicate((widget) => widget is Text && widget.data?.contains(value) == true);
 }
