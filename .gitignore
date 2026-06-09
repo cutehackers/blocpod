@@ -4,6 +4,7 @@
 build/
 coverage/
 pubspec.lock
+!packages/sample/pubspec.lock
 
 .DS_Store
 *.iml

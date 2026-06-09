@@ -1,6 +1,6 @@
 # Blocpod Sample
 
-This private Flutter package demonstrates the Blocpod workspace packages:
+This private Flutter package demonstrates the published Blocpod packages:
 
 - `blocpod_arch`: event controllers, dispatch helpers, use cases, results, trace context, and event records.
 - `blocpod_logger`: generic log entries and sinks.

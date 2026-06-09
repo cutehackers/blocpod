@@ -9,6 +9,7 @@ The workspace starts from the design in [docs/superpowers/specs/2026-06-01-blocp
 - `packages/arch` (`blocpod_arch`): `Result`, `UseCase`, `EventControllerNotifier`, dispatch extensions, trace context, observer records, and no-op event logger provider.
 - `packages/logger` (`blocpod_logger`): generic log entries, log levels, log sinks, debug print output, and local-development formatting.
 - `packages/arch_logger` (`blocpod_arch_logger`): `EventLogger` adapter that maps `EventLogRecord` values to `BlocpodLogEntry` values.
+- `packages/sample` (`blocpod_sample`): private runnable app that consumes the published `blocpod_*` packages.
 
 ## Local Commands
 
@@ -18,6 +19,7 @@ dart pub workspace list
 (cd packages/arch && flutter test)
 (cd packages/logger && flutter test)
 (cd packages/arch_logger && flutter test)
+(cd packages/sample && flutter test)
 flutter analyze
 dart format --line-length 120 .
 ```

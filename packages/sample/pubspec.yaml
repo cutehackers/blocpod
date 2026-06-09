@@ -6,15 +6,10 @@ version: 0.1.0
 environment:
   sdk: ^3.11.5
 
-resolution: workspace
-
 dependencies:
-  blocpod_arch:
-    path: ../arch
-  blocpod_arch_logger:
-    path: ../arch_logger
-  blocpod_logger:
-    path: ../logger
+  blocpod_arch: ^0.1.0
+  blocpod_arch_logger: ^0.1.0
+  blocpod_logger: ^0.1.0
   flutter:
     sdk: flutter
   flutter_riverpod: ^3.3.1
