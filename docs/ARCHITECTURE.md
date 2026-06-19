@@ -42,8 +42,10 @@ The observer stream follows the BLoCObserver model while staying Riverpod-native
 
 - `controllerCreated` and `controllerDisposed` are emitted from the controller lifecycle.
 - `eventStarted` is emitted when `dispatch` enters an event handler.
-- `transition` is emitted before each `state = ...` assignment while an event dispatch context is active.
+- `transition` is emitted before each `state = ...` assignment while an event dispatch context is active. This is Blocpod's canonical state-assignment observation: it carries the event name, trace/span ids, previous/next `AsyncValue` kinds, optional sanitized state labels/metadata, and `hasChanged` information.
 - `eventCompleted` or `eventFailed` is emitted when the handler exits.
+
+Blocpod intentionally does not emit a separate BLoC-style `onChange` phase. BLoC's `onChange` observes `BlocBase.emit` with only current and next state, while Blocpod's `transition` observes Riverpod `AsyncValue` state assignments inside dispatch and keeps the event attribution. Human-readable formatters may render a transition in a BLoC-observer-like style, but the core record stream stays single-source and avoids duplicate state-change records.
 
 The internal `EventDispatchContext` is stored in the async zone during dispatch and carries the trace/span ids, event name, sanitized event metadata, start time, and transition index. Nested dispatches create child spans inside the same trace. Concurrent dispatches keep attribution through their async zone.
 

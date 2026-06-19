@@ -11,7 +11,7 @@ final class BlocpodEventLogger implements EventLogger {
   final BlocpodLogSink sink;
 
   /// Record formatter.
-  final EventLogRecordFormatter formatter;
+  final BlocpodEventLogFormatter formatter;
 
   @override
   void log(EventLogRecord record) {

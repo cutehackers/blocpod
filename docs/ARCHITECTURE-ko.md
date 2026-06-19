@@ -42,8 +42,10 @@ observer stream은 BLoCObserver 모델을 따르되 Riverpod 구조에 맞춘다
 
 - `controllerCreated`와 `controllerDisposed`는 controller lifecycle에서 기록한다.
 - `eventStarted`는 `dispatch`가 event handler에 들어갈 때 기록한다.
-- `transition`은 event dispatch context가 활성화된 동안 각 `state = ...` assignment 직전에 기록한다.
+- `transition`은 event dispatch context가 활성화된 동안 각 `state = ...` assignment 직전에 기록된다. 이것은 Blocpod의 표준 상태 assignment 관찰 단위이며 event name, trace/span id, previous/next `AsyncValue` kind, 선택적 sanitized state label/metadata, `hasChanged` 정보를 함께 담는다.
 - `eventCompleted` 또는 `eventFailed`는 handler가 종료될 때 기록한다.
+
+Blocpod은 별도의 BLoC-style `onChange` phase를 의도적으로 추가하지 않는다. BLoC의 `onChange`는 current/next state만 가진 `BlocBase.emit` 관찰이고, Blocpod의 `transition`은 dispatch 내부의 Riverpod `AsyncValue` state assignment를 event attribution과 함께 관찰한다. 사람이 읽기 쉬운 formatter는 transition을 BLoC observer와 비슷한 형태로 렌더링할 수 있지만, core record stream은 중복 state-change record 없이 단일 source를 유지한다.
 
 내부 `EventDispatchContext`는 dispatch 중 async zone에 저장되며 trace/span id, event name, sanitized event metadata, start time, transition index를 가진다. nested dispatch는 같은 trace 안에서 child span을 만들고, concurrent dispatch는 각 async zone으로 attribution을 유지한다.
 

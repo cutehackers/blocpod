@@ -19,10 +19,28 @@ const Set<String> _reservedMetadataKeys = <String>{
 };
 
 /// Converts Blocpod architecture event records into generic log entries.
-final class EventLogRecordFormatter {
+abstract interface class BlocpodEventLogFormatter {
+  /// Formats [record].
+  BlocpodLogEntry format(EventLogRecord record);
+}
+
+/// Returns the log-facing label for [phase].
+String eventLogPhaseLabel(EventLogPhase phase) {
+  return switch (phase) {
+    EventLogPhase.controllerCreated => 'controller.created',
+    EventLogPhase.eventStarted => 'event.started',
+    EventLogPhase.transition => 'state.transition',
+    EventLogPhase.eventCompleted => 'event.completed',
+    EventLogPhase.eventFailed => 'event.failed',
+    EventLogPhase.controllerDisposed => 'controller.disposed',
+  };
+}
+
+/// Compact structured formatter for Blocpod architecture event records.
+final class EventLogRecordFormatter implements BlocpodEventLogFormatter {
   const EventLogRecordFormatter();
 
-  /// Formats [record].
+  @override
   BlocpodLogEntry format(EventLogRecord record) {
     return BlocpodLogEntry(
       level: record.error == null ? BlocpodLogLevel.info : BlocpodLogLevel.error,
@@ -31,7 +49,7 @@ final class EventLogRecordFormatter {
       metadata: <String, Object?>{
         for (final entry in record.metadata.entries)
           if (!_reservedMetadataKeys.contains(entry.key)) entry.key: entry.value,
-        'phase': record.phase.name,
+        'phase': eventLogPhaseLabel(record.phase),
         'traceId': record.traceContext.traceId,
         'spanId': record.traceContext.spanId,
         if (record.traceContext.parentSpanId != null) 'parentSpanId': record.traceContext.parentSpanId,
@@ -56,17 +74,18 @@ final class EventLogRecordFormatter {
     final states = _statesFor(record);
     final duration = record.duration;
     final durationText = duration == null ? '' : ' ${duration.inMilliseconds}ms';
+    final phaseLabel = eventLogPhaseLabel(record.phase);
 
     return switch (record.phase) {
-      EventLogPhase.controllerCreated => '${record.controllerName} controllerCreated',
-      EventLogPhase.controllerDisposed => '${record.controllerName} controllerDisposed',
-      EventLogPhase.eventStarted => '${record.controllerName} ${eventName ?? 'unknownEvent'} eventStarted$states',
+      EventLogPhase.controllerCreated => '${record.controllerName} $phaseLabel',
+      EventLogPhase.controllerDisposed => '${record.controllerName} $phaseLabel',
+      EventLogPhase.eventStarted => '${record.controllerName} ${eventName ?? 'unknownEvent'} $phaseLabel$states',
       EventLogPhase.transition =>
-        '${record.controllerName} ${eventName ?? 'unknownEvent'} transition#${record.transitionIndex ?? 0}$states',
+        '${record.controllerName} ${eventName ?? 'unknownEvent'} $phaseLabel#${record.transitionIndex ?? 0}$states',
       EventLogPhase.eventCompleted =>
-        '${record.controllerName} ${eventName ?? 'unknownEvent'} eventCompleted$states$durationText',
+        '${record.controllerName} ${eventName ?? 'unknownEvent'} $phaseLabel$states$durationText',
       EventLogPhase.eventFailed =>
-        '${record.controllerName} ${eventName ?? 'unknownEvent'} eventFailed$states$durationText',
+        '${record.controllerName} ${eventName ?? 'unknownEvent'} $phaseLabel$states$durationText',
     };
   }
 

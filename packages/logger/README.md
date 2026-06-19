@@ -22,10 +22,10 @@ final sink = DebugPrintLogSink();
 sink.write(
   BlocpodLogEntry(
     level: BlocpodLogLevel.info,
-    message: 'CounterController IncrementEvent transition#1 data->data',
+    message: 'CounterController IncrementEvent state.transition#1 data->data',
     timestamp: DateTime.now().toUtc(),
     metadata: const {
-      'phase': 'transition',
+      'phase': 'state.transition',
       'traceId': 'trace-1',
       'transitionIndex': 1,
       'durationMicros': 1200,

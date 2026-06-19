@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.2
+
+- Added `BlocpodEventLogFormatter` so `BlocpodEventLogger` can use custom formatters.
+- Added `PrettyEventLogRecordFormatter` for local transition debugging.
+- Changed formatted phase metadata and compact messages to log-friendly labels such as `event.started`, `state.transition`, and `event.completed`.
+- Pretty formatter messages now show metadata key summaries only; metadata values remain structured for sink-level handling.
+
 ## 0.1.1
 
 - Co-released with `blocpod_arch 0.1.1`.

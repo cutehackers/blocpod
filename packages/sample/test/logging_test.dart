@@ -15,7 +15,7 @@ void main() {
     await container.read(counterProvider.notifier).dispatch(const CounterIncremented(1));
 
     expect(sink.entries, isNotEmpty);
-    expect(sink.entries.map((entry) => entry.message), contains(contains('eventCompleted')));
+    expect(sink.entries.map((entry) => entry.message), contains(contains('event.completed')));
     expect(sink.entries.map((entry) => entry.level), everyElement(BlocpodLogLevel.info));
     expect(sink.entries.last.metadata, containsPair('controllerName', 'SampleCounterController'));
   });
