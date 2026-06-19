@@ -1,6 +1,6 @@
 name: blocpod_arch_logger
 description: Adapter that maps blocpod_arch event records into blocpod_logger log entries and sinks.
-version: 0.1.2
+version: 0.1.3
 repository: https://github.com/cutehackers/blocpod
 issue_tracker: https://github.com/cutehackers/blocpod/issues
 topics:
@@ -16,8 +16,8 @@ environment:
 resolution: workspace
 
 dependencies:
-  blocpod_arch: ^0.1.0
-  blocpod_logger: ^0.1.0
+  blocpod_arch: ^0.1.1
+  blocpod_logger: ^0.1.1
 
 dev_dependencies:
   flutter_test:

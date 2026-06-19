@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.3
+
+- Raised the minimum `blocpod_arch` and `blocpod_logger` dependency constraints to `^0.1.1`.
+
 ## 0.1.2
 
 - Added `BlocpodEventLogFormatter` so `BlocpodEventLogger` can use custom formatters.

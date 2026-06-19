@@ -9,9 +9,9 @@ environment:
 resolution: workspace
 
 dependencies:
-  blocpod_arch: ^0.1.0
-  blocpod_arch_logger: ^0.1.0
-  blocpod_logger: ^0.1.0
+  blocpod_arch: ^0.1.1
+  blocpod_arch_logger: ^0.1.3
+  blocpod_logger: ^0.1.1
   flutter:
     sdk: flutter
   flutter_riverpod: ^3.3.2
