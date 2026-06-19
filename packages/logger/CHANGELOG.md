@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.1
+
+- Co-released with `blocpod_arch 0.1.1`.
+
 ## 0.1.0
 
 - Initial release of Blocpod's generic logging primitives.

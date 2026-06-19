@@ -19,10 +19,10 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
 
   @mustCallSuper
   @override
-  void runBuild() {
+  void Function(void Function())? runBuild() {
     _logControllerCreatedOnce();
     _registerControllerDisposedOnce();
-    super.runBuild();
+    return super.runBuild();
   }
 
   @override
