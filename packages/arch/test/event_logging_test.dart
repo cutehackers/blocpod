@@ -57,6 +57,19 @@ final explodingEqualityProvider = AsyncNotifierProvider<ExplodingEqualityControl
   ExplodingEqualityController.new,
 );
 
+final failingBuildProvider = AsyncNotifierProvider<FailingBuildController, int>(
+  FailingBuildController.new,
+  retry: (_, _) => null,
+);
+
+final plainSyncProvider = AsyncNotifierProvider<PlainSyncController, int>(
+  PlainSyncController.new,
+);
+
+final rebuildingProvider = AsyncNotifierProvider<RebuildingController, int>(
+  RebuildingController.new,
+);
+
 final class LoggingController extends EventControllerNotifier<int, LoggingEvent> {
   @override
   Future<int> build() async {
@@ -178,6 +191,34 @@ final class ExplodingEqualityController extends EventControllerNotifier<Explodin
   }
 }
 
+final class FailingBuildController extends EventControllerNotifier<int, LoggingEvent> {
+  @override
+  Future<int> build() async {
+    throw StateError('restore failed');
+  }
+
+  @override
+  Future<void> onEvent(LoggingEvent event) async {}
+}
+
+final class PlainSyncController extends EventControllerNotifier<int, LoggingEvent> {
+  @override
+  int build() => 7;
+
+  @override
+  Future<void> onEvent(LoggingEvent event) async {}
+}
+
+final class RebuildingController extends EventControllerNotifier<int, LoggingEvent> {
+  int _buildCount = 0;
+
+  @override
+  int build() => ++_buildCount;
+
+  @override
+  Future<void> onEvent(LoggingEvent event) async {}
+}
+
 final class CollectingEventLogger implements EventLogger {
   final records = <EventLogRecord>[];
 
@@ -202,6 +243,93 @@ void main() {
     await container.read(loggingProvider.notifier).dispatch(const IncrementEvent());
 
     expect(container.read(loggingProvider), isA<AsyncData<int>>().having((value) => value.value, 'value', 1));
+  });
+
+  test('async build logs its initialized state through existing summary hooks', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+
+    await container.read(loggingProvider.future);
+
+    expect(logger.records.map((record) => record.phase), <EventLogPhase>[
+      EventLogPhase.controllerCreated,
+      EventLogPhase.initialStateEstablished,
+    ]);
+    final initialized = logger.records.singleWhere(
+      (record) => record.phase == EventLogPhase.initialStateEstablished,
+    );
+    expect(initialized.controllerName, 'LoggingController');
+    expect(initialized.eventName, isNull);
+    expect(initialized.previousStateKind, isNull);
+    expect(initialized.previousStateLabel, isNull);
+    expect(initialized.nextStateKind, AsyncValueKind.data);
+    expect(initialized.nextStateLabel, 'value:0');
+    expect(initialized.hasChanged, isNull);
+    expect(initialized.duration, isNull);
+    expect(initialized.transitionIndex, isNull);
+    expect(initialized.stateMetadata, <String, Object?>{
+      'previousKind': 'data',
+      'nextKind': 'data',
+    });
+    expect(initialized.metadata, containsPair('controllerScope', 'sample-logging'));
+    expect(initialized.error, isNull);
+    expect(initialized.stackTrace, isNull);
+  });
+
+  test('failed async build logs the final AsyncError and stack trace', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+
+    await expectLater(
+      container.read(failingBuildProvider.future),
+      throwsA(isA<StateError>().having((error) => error.message, 'message', 'restore failed')),
+    );
+
+    final initialized = logger.records.singleWhere(
+      (record) => record.phase == EventLogPhase.initialStateEstablished,
+    );
+    expect(initialized.nextStateKind, AsyncValueKind.error);
+    expect(initialized.nextStateLabel, isNull);
+    expect(
+      initialized.error,
+      isA<StateError>().having((error) => error.message, 'message', 'restore failed'),
+    );
+    expect(initialized.stackTrace, isNotNull);
+  });
+
+  test('sync build logs initialization even when state summary hooks are not overridden', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+
+    expect(await container.read(plainSyncProvider.future), 7);
+
+    final initialized = logger.records.singleWhere(
+      (record) => record.phase == EventLogPhase.initialStateEstablished,
+    );
+    expect(initialized.nextStateKind, AsyncValueKind.data);
+    expect(initialized.nextStateLabel, isNull);
+    expect(initialized.stateMetadata, isEmpty);
+  });
+
+  test('provider rebuild does not duplicate the initialized-state record', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+
+    final notifier = container.read(rebuildingProvider.notifier);
+    expect(await container.read(rebuildingProvider.future), 1);
+
+    container.invalidate(rebuildingProvider);
+
+    expect(await container.read(rebuildingProvider.future), 2);
+    expect(container.read(rebuildingProvider.notifier), same(notifier));
+    expect(
+      logger.records.where((record) => record.phase == EventLogPhase.initialStateEstablished),
+      hasLength(1),
+    );
   });
 
   test('dispatch logs before and after AsyncValue state kinds', () async {

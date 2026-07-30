@@ -15,6 +15,7 @@ abstract class EventController<E> {
 /// Riverpod [AsyncNotifier] base class with a single event dispatch boundary.
 abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements EventController<E> {
   bool _didLogControllerCreated = false;
+  bool _didLogInitialStateEstablished = false;
   bool _didRegisterControllerDisposed = false;
 
   @mustCallSuper
@@ -22,7 +23,15 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
   void Function(void Function())? runBuild() {
     _logControllerCreatedOnce();
     _registerControllerDisposedOnce();
-    return super.runBuild();
+    final whenComplete = super.runBuild();
+    return whenComplete == null
+        ? null
+        : (onComplete) {
+            whenComplete(() {
+              _logInitialStateEstablishedOnce();
+              onComplete();
+            });
+          };
   }
 
   @override
@@ -112,13 +121,15 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
   @protected
   Map<String, Object?> controllerMetadata() => const {};
 
-  /// Optional payload-free state label recorded for state transitions.
+  /// Optional payload-free state label recorded for initialization and transitions.
   ///
   /// Do not return raw state objects, secrets, or private data.
   @protected
   String? stateLabel(AsyncValue<S> state) => null;
 
-  /// Optional payload-free state metadata recorded for state transitions.
+  /// Optional payload-free state metadata recorded for initialization and transitions.
+  ///
+  /// During initialization, [previous] and [next] are the same established state.
   ///
   /// Values must not include secrets, raw state payloads, or other sensitive
   /// application data.
@@ -144,6 +155,42 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
         metadata: _safeControllerMetadata(),
       ),
     );
+  }
+
+  void _logInitialStateEstablishedOnce() {
+    if (_didLogInitialStateEstablished) {
+      return;
+    }
+    _didLogInitialStateEstablished = true;
+
+    try {
+      final initialized = state;
+      final (error, stackTrace) = switch (initialized) {
+        AsyncError<S>(:final error, :final stackTrace) => (error, stackTrace),
+        _ => (null, null),
+      };
+      final startedAt = DateTime.now().toUtc();
+      final traceContext = TraceContext.root(startedAt: startedAt);
+      _writeRecordSafely(
+        EventLogRecord(
+          phase: EventLogPhase.initialStateEstablished,
+          traceContext: traceContext,
+          controllerName: _safeControllerName(),
+          startedAt: startedAt,
+          nextStateKind: asyncValueKindOf(initialized),
+          nextStateLabel: _safeStateLabel(initialized),
+          stateMetadata: _safeStateMetadata(
+            previous: initialized,
+            next: initialized,
+          ),
+          error: error,
+          stackTrace: stackTrace,
+          metadata: _safeControllerMetadata(),
+        ),
+      );
+    } catch (_) {
+      // Logging must never affect application flow.
+    }
   }
 
   void _registerControllerDisposedOnce() {

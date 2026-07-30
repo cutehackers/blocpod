@@ -7,7 +7,15 @@ import 'trace_context.dart';
 enum AsyncValueKind { loading, data, error }
 
 /// Observable lifecycle phase for a Blocpod controller.
-enum EventLogPhase { controllerCreated, eventStarted, transition, eventCompleted, eventFailed, controllerDisposed }
+enum EventLogPhase {
+  controllerCreated,
+  initialStateEstablished,
+  eventStarted,
+  transition,
+  eventCompleted,
+  eventFailed,
+  controllerDisposed,
+}
 
 /// Structured, payload-free observation record for Blocpod controllers.
 final class EventLogRecord {
