@@ -4,6 +4,7 @@
 
 - Added compact and pretty formatter support for `state.established` records.
 - Raised the minimum `blocpod_arch` dependency to `^0.2.0`.
+- Raised the minimum Dart SDK to `^3.12.0`.
 
 ## 0.1.3
 
