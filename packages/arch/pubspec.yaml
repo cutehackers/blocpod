@@ -11,14 +11,14 @@ topics:
   - architecture
 
 environment:
-  sdk: ^3.11.5
+  sdk: ^3.12.0
 
 resolution: workspace
 
 dependencies:
   flutter:
     sdk: flutter
-  flutter_riverpod: ^3.3.2
+  flutter_riverpod: ^3.4.2
 
 dev_dependencies:
   flutter_test:

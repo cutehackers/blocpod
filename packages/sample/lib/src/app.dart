@@ -213,7 +213,7 @@ final class EventLogPanel extends ConsumerWidget {
       child: ListenableBuilder(
         listenable: sink,
         builder: (context, _) {
-          final entries = sink.entries.reversed.take(8).toList();
+          final entries = sink.entries.reversed.take(20).toList();
           if (entries.isEmpty) {
             return const Text('No events yet');
           }
