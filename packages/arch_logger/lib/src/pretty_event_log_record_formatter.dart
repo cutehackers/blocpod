@@ -39,37 +39,80 @@ final class PrettyEventLogRecordFormatter implements BlocpodEventLogFormatter {
 
   String _messageFor(EventLogRecord record) {
     return switch (record.phase) {
-      EventLogPhase.controllerCreated => _lifecycleMessage('🟢 controller.created', record),
-      EventLogPhase.controllerDisposed => _lifecycleMessage('⚪ controller.disposed', record),
+      EventLogPhase.controllerCreated => _lifecycleMessage(
+        '🟢 controller.created',
+        record,
+      ),
+      EventLogPhase.initialStateEstablished => _initialStateEstablishedMessage(
+        record,
+      ),
+      EventLogPhase.controllerDisposed => _lifecycleMessage(
+        '⚪ controller.disposed',
+        record,
+      ),
       EventLogPhase.eventStarted => _eventStartedMessage(record),
       EventLogPhase.transition => _transitionMessage(record),
-      EventLogPhase.eventCompleted => _eventFinishedMessage('✅ event.completed', record),
-      EventLogPhase.eventFailed => _eventFinishedMessage('🔴 event.failed', record),
+      EventLogPhase.eventCompleted => _eventFinishedMessage(
+        '✅ event.completed',
+        record,
+      ),
+      EventLogPhase.eventFailed => _eventFinishedMessage(
+        '🔴 event.failed',
+        record,
+      ),
     };
+  }
+
+  String _initialStateEstablishedMessage(EventLogRecord record) {
+    final buffer = StringBuffer()
+      ..writeln('🔵 state.established -- ${record.controllerName}')
+      ..writeln(
+        '   next: ${_stateText(record.nextStateKind, record.nextStateLabel)}',
+      )
+      ..write(
+        '   trace: ${record.traceContext.traceId}/${record.traceContext.spanId}',
+      );
+    _appendMetadataLine(buffer, 'metadata', record.metadata);
+    _appendMetadataLine(buffer, 'stateMetadata', record.stateMetadata);
+    return buffer.toString();
   }
 
   String _lifecycleMessage(String title, EventLogRecord record) {
     final buffer = StringBuffer()
       ..writeln('$title -- ${record.controllerName}')
-      ..write('   trace: ${record.traceContext.traceId}/${record.traceContext.spanId}');
+      ..write(
+        '   trace: ${record.traceContext.traceId}/${record.traceContext.spanId}',
+      );
     _appendMetadataLine(buffer, 'metadata', record.metadata);
     return buffer.toString();
   }
 
   String _eventStartedMessage(EventLogRecord record) {
     final buffer = StringBuffer()
-      ..writeln('🟡 event.started -- ${record.controllerName}, Event: ${record.eventName ?? 'unknownEvent'}')
-      ..writeln('   previous: ${_stateText(record.previousStateKind, record.previousStateLabel)}')
-      ..write('   trace: ${record.traceContext.traceId}/${record.traceContext.spanId}');
+      ..writeln(
+        '🟡 event.started -- ${record.controllerName}, Event: ${record.eventName ?? 'unknownEvent'}',
+      )
+      ..writeln(
+        '   previous: ${_stateText(record.previousStateKind, record.previousStateLabel)}',
+      )
+      ..write(
+        '   trace: ${record.traceContext.traceId}/${record.traceContext.spanId}',
+      );
     _appendMetadataLine(buffer, 'eventMetadata', record.metadata);
     return buffer.toString();
   }
 
   String _transitionMessage(EventLogRecord record) {
     final buffer = StringBuffer()
-      ..writeln('✨ state.transition -- ${record.controllerName}, Event: ${record.eventName ?? 'unknownEvent'}')
-      ..writeln('   previous: ${_stateText(record.previousStateKind, record.previousStateLabel)}')
-      ..writeln('   next: ${_stateText(record.nextStateKind, record.nextStateLabel)}')
+      ..writeln(
+        '✨ state.transition -- ${record.controllerName}, Event: ${record.eventName ?? 'unknownEvent'}',
+      )
+      ..writeln(
+        '   previous: ${_stateText(record.previousStateKind, record.previousStateLabel)}',
+      )
+      ..writeln(
+        '   next: ${_stateText(record.nextStateKind, record.nextStateLabel)}',
+      )
       ..writeln('   transitionIndex: ${record.transitionIndex ?? 0}')
       ..write('   hasChanged: ${record.hasChanged ?? false}');
     _appendMetadataLine(buffer, 'eventMetadata', record.metadata);
@@ -78,11 +121,19 @@ final class PrettyEventLogRecordFormatter implements BlocpodEventLogFormatter {
   }
 
   String _eventFinishedMessage(String title, EventLogRecord record) {
-    final durationText = record.duration == null ? 'unknown' : '${record.duration!.inMilliseconds}ms';
+    final durationText = record.duration == null
+        ? 'unknown'
+        : '${record.duration!.inMilliseconds}ms';
     final buffer = StringBuffer()
-      ..writeln('$title -- ${record.controllerName}, Event: ${record.eventName ?? 'unknownEvent'}')
-      ..writeln('   previous: ${_stateText(record.previousStateKind, record.previousStateLabel)}')
-      ..writeln('   next: ${_stateText(record.nextStateKind, record.nextStateLabel)}')
+      ..writeln(
+        '$title -- ${record.controllerName}, Event: ${record.eventName ?? 'unknownEvent'}',
+      )
+      ..writeln(
+        '   previous: ${_stateText(record.previousStateKind, record.previousStateLabel)}',
+      )
+      ..writeln(
+        '   next: ${_stateText(record.nextStateKind, record.nextStateLabel)}',
+      )
       ..write('   duration: $durationText');
     _appendMetadataLine(buffer, 'eventMetadata', record.metadata);
     _appendMetadataLine(buffer, 'stateMetadata', record.stateMetadata);
@@ -97,7 +148,11 @@ final class PrettyEventLogRecordFormatter implements BlocpodEventLogFormatter {
     return '$kindText($label)';
   }
 
-  void _appendMetadataLine(StringBuffer buffer, String label, Map<String, Object?> metadata) {
+  void _appendMetadataLine(
+    StringBuffer buffer,
+    String label,
+    Map<String, Object?> metadata,
+  ) {
     final keys = _safeMetadataKeys(metadata);
     if (keys.isEmpty) {
       return;
@@ -110,7 +165,8 @@ final class PrettyEventLogRecordFormatter implements BlocpodEventLogFormatter {
   List<String> _safeMetadataKeys(Map<String, Object?> metadata) {
     final keys = <String>[];
     for (final entry in metadata.entries) {
-      if (_prettyReservedMetadataKeys.contains(entry.key) || _isSensitiveKey(entry.key)) {
+      if (_prettyReservedMetadataKeys.contains(entry.key) ||
+          _isSensitiveKey(entry.key)) {
         continue;
       }
       keys.add(entry.key);
