@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:blocpod_arch/blocpod_arch.dart';
 import 'package:blocpod_arch/src/event_dispatch_context.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -59,6 +61,26 @@ final explodingEqualityProvider = AsyncNotifierProvider<ExplodingEqualityControl
 
 final failingBuildProvider = AsyncNotifierProvider<FailingBuildController, int>(
   FailingBuildController.new,
+  retry: (_, _) => null,
+);
+
+final synchronousFailingBuildProvider = AsyncNotifierProvider<SynchronousFailingBuildController, int>(
+  SynchronousFailingBuildController.new,
+  retry: (_, _) => null,
+);
+
+final retryThenSuccessProvider = AsyncNotifierProvider<RetryThenSuccessController, int>(
+  RetryThenSuccessController.new,
+  retry: (retryCount, _) => retryCount == 0 ? Duration.zero : null,
+);
+
+final retryExhaustionProvider = AsyncNotifierProvider<RetryExhaustionController, int>(
+  RetryExhaustionController.new,
+  retry: (retryCount, _) => retryCount == 0 ? Duration.zero : null,
+);
+
+final cancellableBuildProvider = AsyncNotifierProvider<CancellableBuildController, int>(
+  CancellableBuildController.new,
   retry: (_, _) => null,
 );
 
@@ -197,6 +219,59 @@ final class FailingBuildController extends EventControllerNotifier<int, LoggingE
   Future<void> onEvent(LoggingEvent event) async {}
 }
 
+final class SynchronousFailingBuildController extends EventControllerNotifier<int, LoggingEvent> {
+  @override
+  int build() {
+    throw StateError('sync restore failed');
+  }
+
+  @override
+  Future<void> onEvent(LoggingEvent event) async {}
+}
+
+final class RetryThenSuccessController extends EventControllerNotifier<int, LoggingEvent> {
+  int attempts = 0;
+
+  @override
+  Future<int> build() async {
+    attempts++;
+    if (attempts == 1) {
+      throw Exception('retry once');
+    }
+    return 42;
+  }
+
+  @override
+  Future<void> onEvent(LoggingEvent event) async {}
+}
+
+final class RetryExhaustionController extends EventControllerNotifier<int, LoggingEvent> {
+  int attempts = 0;
+
+  @override
+  Future<int> build() async {
+    attempts++;
+    throw Exception('retry failed $attempts');
+  }
+
+  @override
+  Future<void> onEvent(LoggingEvent event) async {}
+}
+
+final class CancellableBuildController extends EventControllerNotifier<int, LoggingEvent> {
+  final completions = <Completer<int>>[];
+
+  @override
+  Future<int> build() {
+    final completion = Completer<int>();
+    completions.add(completion);
+    return completion.future;
+  }
+
+  @override
+  Future<void> onEvent(LoggingEvent event) async {}
+}
+
 final class PlainSyncController extends EventControllerNotifier<int, LoggingEvent> {
   @override
   int build() => 7;
@@ -285,6 +360,70 @@ void main() {
     expect(initialized.stackTrace, isNotNull);
   });
 
+  test('synchronously thrown build logs the final AsyncError and stack trace', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+
+    await expectLater(
+      container.read(synchronousFailingBuildProvider.future),
+      throwsA(isA<StateError>().having((error) => error.message, 'message', 'sync restore failed')),
+    );
+
+    final initialized = logger.records.singleWhere((record) => record.phase == EventLogPhase.initialStateEstablished);
+    expect(initialized.nextStateKind, AsyncValueKind.error);
+    expect(initialized.error, isA<StateError>().having((error) => error.message, 'message', 'sync restore failed'));
+    expect(initialized.stackTrace, isNotNull);
+  });
+
+  test('retryable build logs terminal data instead of intermediate retry loading', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+    final terminalState = Completer<AsyncValue<int>>();
+    final subscription = container.listen(retryThenSuccessProvider, (_, next) {
+      if (next case AsyncData<int>()) {
+        terminalState.complete(next);
+      }
+    }, fireImmediately: true);
+    addTearDown(subscription.close);
+
+    final settled = await terminalState.future.timeout(const Duration(seconds: 1));
+
+    expect(container.read(retryThenSuccessProvider.notifier).attempts, 2);
+    expect(settled.value, 42);
+    final initialized = logger.records.singleWhere((record) => record.phase == EventLogPhase.initialStateEstablished);
+    expect(initialized.nextStateKind, AsyncValueKind.data);
+    expect(initialized.nextStateLabel, isNull);
+    expect(initialized.error, isNull);
+    expect(initialized.stackTrace, isNull);
+  });
+
+  test('retry exhaustion logs only the terminal AsyncError', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+    final terminalState = Completer<AsyncValue<int>>();
+    final subscription = container.listen(retryExhaustionProvider, (_, next) {
+      if (next case AsyncError<int>()) {
+        terminalState.complete(next);
+      }
+    }, fireImmediately: true);
+    addTearDown(subscription.close);
+
+    final settled = await terminalState.future.timeout(const Duration(seconds: 1));
+
+    expect(container.read(retryExhaustionProvider.notifier).attempts, 2);
+    expect(settled.error, isA<Exception>().having((error) => error.toString(), 'message', 'Exception: retry failed 2'));
+    final initialized = logger.records.singleWhere((record) => record.phase == EventLogPhase.initialStateEstablished);
+    expect(initialized.nextStateKind, AsyncValueKind.error);
+    expect(
+      initialized.error,
+      isA<Exception>().having((error) => error.toString(), 'message', 'Exception: retry failed 2'),
+    );
+    expect(initialized.stackTrace, isNotNull);
+  });
+
   test('sync build logs initialization even when state summary hooks are not overridden', () async {
     final logger = CollectingEventLogger();
     final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
@@ -298,19 +437,57 @@ void main() {
     expect(initialized.stateMetadata, isEmpty);
   });
 
-  test('provider rebuild does not duplicate the initialized-state record', () async {
+  test('provider rebuild logs the first ref disposal without duplicating initialization', () async {
     final logger = CollectingEventLogger();
     final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
-    addTearDown(container.dispose);
 
     final notifier = container.read(rebuildingProvider.notifier);
     expect(await container.read(rebuildingProvider.future), 1);
+    expect(logger.records.map((record) => record.phase), <EventLogPhase>[
+      EventLogPhase.controllerCreated,
+      EventLogPhase.initialStateEstablished,
+    ]);
 
     container.invalidate(rebuildingProvider);
 
     expect(await container.read(rebuildingProvider.future), 2);
     expect(container.read(rebuildingProvider.notifier), same(notifier));
     expect(logger.records.where((record) => record.phase == EventLogPhase.initialStateEstablished), hasLength(1));
+    expect(logger.records.map((record) => record.phase), <EventLogPhase>[
+      EventLogPhase.controllerCreated,
+      EventLogPhase.initialStateEstablished,
+      EventLogPhase.controllerDisposed,
+    ]);
+
+    container.dispose();
+
+    expect(logger.records.where((record) => record.phase == EventLogPhase.controllerDisposed), hasLength(1));
+  });
+
+  test('invalidating an in-flight build logs only the replacement terminal state', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+
+    final notifier = container.read(cancellableBuildProvider.notifier);
+    container.read(cancellableBuildProvider.future);
+    expect(notifier.completions, hasLength(1));
+
+    container.invalidate(cancellableBuildProvider);
+    final replacement = container.read(cancellableBuildProvider.future);
+    expect(container.read(cancellableBuildProvider.notifier), same(notifier));
+    expect(notifier.completions, hasLength(2));
+
+    notifier.completions.first.complete(1);
+    await Future<void>.delayed(Duration.zero);
+    expect(logger.records.where((record) => record.phase == EventLogPhase.initialStateEstablished), isEmpty);
+
+    notifier.completions.last.complete(2);
+    expect(await replacement, 2);
+
+    final initialized = logger.records.where((record) => record.phase == EventLogPhase.initialStateEstablished);
+    expect(initialized, hasLength(1));
+    expect(initialized.single.nextStateKind, AsyncValueKind.data);
   });
 
   test('dispatch logs before and after AsyncValue state kinds', () async {

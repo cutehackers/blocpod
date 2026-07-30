@@ -38,13 +38,14 @@ Controllers inherit `EventControllerNotifier<State, Event>` and expose only `dis
 
 `blocpod_arch` emits structured event records through `eventLoggerProvider` and defaults to no-op logging. Applications install concrete output with provider overrides from adapter packages.
 
-The observer stream follows the BLoCObserver model while staying Riverpod-native. Its lifecycle is `controllerCreated → initialStateEstablished → eventStarted → transition* → eventCompleted | eventFailed → controllerDisposed`:
+The observer stream follows the BLoCObserver model while staying Riverpod-native. Build/dispatch records follow `controllerCreated → initialStateEstablished → eventStarted → transition* → eventCompleted | eventFailed`:
 
-- `controllerCreated` and `controllerDisposed` are emitted from the controller lifecycle.
-- `initialStateEstablished` is emitted once after the first synchronous or asynchronous `build()` settles. It has no event or previous state, invokes the existing sanitized `stateLabel` and `stateMetadata` hooks with the final state as both `previous` and `next`, and carries `error` and `stackTrace` when initialization ends in `AsyncError`.
+- `controllerCreated` is emitted before the first build.
+- `initialStateEstablished` is emitted once for the first terminal, non-loading `build()` state. Canceled builds and intermediate retry loading states are ignored. It has no event or previous state, invokes the existing sanitized `stateLabel` and `stateMetadata` hooks with the final state as both `previous` and `next`, and carries `error` and `stackTrace` for synchronous or asynchronous terminal errors.
 - `eventStarted` is emitted when `dispatch` enters an event handler.
 - `transition` is emitted before each `state = ...` assignment while an event dispatch context is active. This is Blocpod's canonical state-assignment observation: it carries the event name, trace/span ids, previous/next `AsyncValue` kinds, optional sanitized state labels/metadata, and `hasChanged` information.
 - `eventCompleted` or `eventFailed` is emitted when the handler exits.
+- `controllerDisposed` records the first Riverpod ref disposal signal registered by the controller. Provider invalidation may emit it before a rebuild on the same notifier, so it is not a final notifier-destruction signal.
 
 Blocpod intentionally does not emit a separate BLoC-style `onChange` phase. BLoC's `onChange` observes `BlocBase.emit` with only current and next state, while Blocpod's `transition` observes Riverpod `AsyncValue` state assignments inside dispatch and keeps the event attribution. Direct non-dispatch assignments remain intentionally unobserved. Human-readable formatters may render a transition in a BLoC-observer-like style, but the core record stream stays single-source and avoids duplicate state-change records.
 

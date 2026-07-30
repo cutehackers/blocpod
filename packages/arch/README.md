@@ -62,13 +62,18 @@ Widgets and providers dispatch events through the public boundary:
 await ref.dispatch(counterProvider, const IncrementCounterEvent());
 ```
 
-`EventControllerNotifier` follows this lifecycle: `controllerCreated → initialStateEstablished → eventStarted → transition* → eventCompleted | eventFailed → controllerDisposed`.
+`EventControllerNotifier` build/dispatch records follow
+`controllerCreated → initialStateEstablished → eventStarted → transition* → eventCompleted | eventFailed`.
 
-`initialStateEstablished` is emitted once after the first synchronous or asynchronous
-`build()` settles. It has no event or previous state and invokes the existing
+`initialStateEstablished` is emitted once for the first terminal, non-loading
+`build()` state. Canceled builds and intermediate retry loading states are ignored.
+It has no event or previous state and invokes the existing
 `stateLabel` and `stateMetadata` hooks; for initialization, the final state is passed
-as both `previous` and `next` to `stateMetadata`. An `AsyncError` result carries its
-`error` and `stackTrace`. During dispatch, one `transition` is recorded for each
+as both `previous` and `next` to `stateMetadata`. A synchronous or asynchronous
+terminal `AsyncError` carries its `error` and `stackTrace`. `controllerDisposed`
+records the first Riverpod ref disposal signal registered by the controller.
+Provider invalidation may emit it before a rebuild on the same notifier, so it does
+not prove notifier destruction. During dispatch, one `transition` is recorded for each
 `state = ...` assignment. Direct assignments outside `dispatch` remain intentionally
 unobserved. State logging is payload-free by default; use `stateLabel` and
 `stateMetadata` only for sanitized summaries.

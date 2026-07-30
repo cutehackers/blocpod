@@ -30,6 +30,7 @@ dart format --line-length 120 .
 - `blocpod_logger` must not depend on `blocpod_arch`.
 - `blocpod_arch_logger` is the only package that knows both sides.
 - Logger support is installed through sibling packages and provider overrides, not optional imports.
-- Controller observability is payload-free by default and follows `controllerCreated → initialStateEstablished → eventStarted → transition* → eventCompleted | eventFailed → controllerDisposed`.
-- `initialStateEstablished` is emitted once after the first synchronous or asynchronous build settles. It has no event or previous state, reuses sanitized `stateLabel` and `stateMetadata` (with the final state as both `previous` and `next`), and carries `error` and `stackTrace` for an `AsyncError` result.
+- Controller build/dispatch observability is payload-free by default and follows `controllerCreated → initialStateEstablished → eventStarted → transition* → eventCompleted | eventFailed`.
+- `initialStateEstablished` is emitted once for the first terminal, non-loading build state. It ignores canceled builds and intermediate retry loading states, has no event or previous state, reuses sanitized `stateLabel` and `stateMetadata` (with the final state as both `previous` and `next`), and carries `error` and `stackTrace` for synchronous or asynchronous terminal errors.
+- `controllerDisposed` records the first Riverpod ref disposal signal registered by the controller. Provider invalidation may emit it before a rebuild on the same notifier, so it is not proof that the notifier instance was destroyed.
 - Direct `state = ...` assignments outside `dispatch` remain intentionally unobserved.

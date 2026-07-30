@@ -62,8 +62,9 @@ eventLoggerProvider.overrideWithValue(
 );
 ```
 
-The lifecycle is `controllerCreated → initialStateEstablished → eventStarted → transition* → eventCompleted | eventFailed → controllerDisposed`.
-`state.established` is emitted once after the first synchronous or asynchronous build settles. It has no event or previous state; its sanitized state summaries come from `stateLabel` and `stateMetadata`, with the final state supplied as both `previous` and `next`. An error initialization carries its `error` and `stackTrace`.
+Build/dispatch records follow `controllerCreated → initialStateEstablished → eventStarted → transition* → eventCompleted | eventFailed`.
+`state.established` is emitted once for the first terminal, non-loading build state; canceled builds and intermediate retry loading states are ignored. It has no event or previous state; its sanitized state summaries come from `stateLabel` and `stateMetadata`, with the final state supplied as both `previous` and `next`. A synchronous or asynchronous terminal error carries its `error` and `stackTrace`.
+`controllerDisposed` records the first Riverpod ref disposal signal registered by the controller. Provider invalidation may emit it before a rebuild on the same notifier, so it is not proof that the notifier instance was destroyed.
 
 Blocpod does not emit a separate BLoC-style `onChange` phase. `transition` is the canonical event-attributed state-assignment record, so direct assignments outside `dispatch` remain intentionally unobserved. Pretty output renders the same transition record in a human-readable form instead of duplicating the core record stream.
 Pretty messages show metadata key summaries only; metadata values remain in `BlocpodLogEntry.metadata` for sink-level redaction and indexing.

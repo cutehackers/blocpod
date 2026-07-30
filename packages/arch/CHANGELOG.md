@@ -3,7 +3,8 @@
 ## 0.2.0
 
 - Added `EventLogPhase.initialStateEstablished` for the initial `AsyncValue` established by `EventControllerNotifier.build()`.
-- Initial-state records reuse sanitized state/controller summary hooks and include build errors without changing provider flow.
+- Initial-state records reuse sanitized state/controller summary hooks, include synchronous and asynchronous terminal build errors, and ignore canceled or intermediate retry-loading states without changing provider flow.
+- Clarified that `controllerDisposed` is the first registered Riverpod ref disposal signal and may precede a rebuild on the same notifier.
 - This adds an enum value and requires exhaustive phase switches to handle `initialStateEstablished`.
 
 ## 0.1.1

@@ -38,13 +38,14 @@ import 'package:blocpod_arch_logger/blocpod_arch_logger.dart';
 
 `blocpod_arch`는 `eventLoggerProvider`를 통해 구조화된 event record를 내보내며 기본값은 no-op logging이다. 애플리케이션은 adapter package의 provider override로 구체적인 출력을 설치한다.
 
-observer stream은 BLoCObserver 모델을 따르되 Riverpod 구조에 맞춘다. lifecycle은 `controllerCreated → initialStateEstablished → eventStarted → transition* → eventCompleted | eventFailed → controllerDisposed`이다.
+observer stream은 BLoCObserver 모델을 따르되 Riverpod 구조에 맞춘다. build/dispatch record는 `controllerCreated → initialStateEstablished → eventStarted → transition* → eventCompleted | eventFailed` 순서를 따른다.
 
-- `controllerCreated`와 `controllerDisposed`는 controller lifecycle에서 기록한다.
-- `initialStateEstablished`는 첫 synchronous 또는 asynchronous `build()`가 완료된 뒤 한 번 기록한다. event나 previous state는 없으며, 기존의 sanitized `stateLabel`과 `stateMetadata` 훅을 호출한다. initialization에서는 최종 state를 `stateMetadata`의 `previous`와 `next` 양쪽에 전달하고, `AsyncError`로 끝나면 `error`와 `stackTrace`를 함께 기록한다.
+- `controllerCreated`는 첫 build 전에 기록한다.
+- `initialStateEstablished`는 첫 terminal non-loading `build()` state에 한 번 기록한다. 취소된 build와 retry 중간의 loading state는 무시한다. event나 previous state는 없으며, 기존의 sanitized `stateLabel`과 `stateMetadata` 훅을 호출한다. initialization에서는 최종 state를 `stateMetadata`의 `previous`와 `next` 양쪽에 전달하고, synchronous 또는 asynchronous terminal error이면 `error`와 `stackTrace`를 함께 기록한다.
 - `eventStarted`는 `dispatch`가 event handler에 들어갈 때 기록한다.
 - `transition`은 event dispatch context가 활성화된 동안 각 `state = ...` assignment 직전에 기록된다. 이것은 Blocpod의 표준 상태 assignment 관찰 단위이며 event name, trace/span id, previous/next `AsyncValue` kind, 선택적 sanitized state label/metadata, `hasChanged` 정보를 함께 담는다.
 - `eventCompleted` 또는 `eventFailed`는 handler가 종료될 때 기록한다.
+- `controllerDisposed`는 controller가 처음 등록한 Riverpod ref disposal signal을 기록한다. provider invalidation 때문에 같은 notifier의 rebuild 전에 기록될 수 있으므로 notifier instance의 최종 파괴를 뜻하지 않는다.
 
 Blocpod은 별도의 BLoC-style `onChange` phase를 의도적으로 추가하지 않는다. BLoC의 `onChange`는 current/next state만 가진 `BlocBase.emit` 관찰이고, Blocpod의 `transition`은 dispatch 내부의 Riverpod `AsyncValue` state assignment를 event attribution과 함께 관찰한다. dispatch 밖의 direct assignment는 의도적으로 관찰하지 않는다. 사람이 읽기 쉬운 formatter는 transition을 BLoC observer와 비슷한 형태로 렌더링할 수 있지만, core record stream은 중복 state-change record 없이 단일 source를 유지한다.
 

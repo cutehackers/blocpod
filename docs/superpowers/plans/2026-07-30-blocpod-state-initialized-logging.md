@@ -4,7 +4,7 @@
 
 **Goal:** Record the initial `AsyncValue` established by `EventControllerNotifier.build()` through the existing payload-free state summary hooks, without requiring controller changes in consuming applications.
 
-**Architecture:** Add `EventLogPhase.initialStateEstablished` to the `blocpod_arch` public lifecycle contract and compose a one-shot logger callback ahead of Riverpod's `runBuild()` completion callback. The composed callback reads the final `AsyncValue`, reuses `stateLabel`, `stateMetadata`, `controllerMetadata`, and `EventLogRecord`, then calls Riverpod's original callback; it leaves transition-only fields empty. Update the bridge formatters exhaustively, then align public documentation and the two affected package versions at `0.2.0`.
+**Architecture:** Add `EventLogPhase.initialStateEstablished` to the `blocpod_arch` public lifecycle contract. After `super.runBuild()`, inspect an already-settled synchronous state, and compose the same one-shot logger ahead of Riverpod's asynchronous completion callback. Ignore `AsyncLoading`, including retry intermediates, until the first terminal state. The logger reuses `stateLabel`, `stateMetadata`, `controllerMetadata`, and `EventLogRecord`, and leaves transition-only fields empty. Update the bridge formatters exhaustively, then align public documentation and the two affected package versions at `0.2.0`.
 
 **Tech Stack:** Dart 3.11.5, Flutter, resolved Riverpod/flutter_riverpod 3.4.2, `flutter_test`, Dart pub workspace
 
@@ -13,10 +13,11 @@
 - Preserve the existing `controllerCreated`, dispatch, transition, completion, failure, and disposal emission timing and field semantics.
 - Do not add, remove, or rename any `EventLogRecord` field.
 - Keep `stateMetadata({required previous, required next})` source-compatible; for initialization pass the same final `AsyncValue<S>` as both arguments.
-- Emit `initialStateEstablished` once per controller instance, after the first successful or failed `build()` completion; dependency invalidation must not emit it again.
+- Emit `initialStateEstablished` once per controller instance for the first terminal, non-loading `build()` state; canceled builds and intermediate retry loading states must not consume the one-shot.
 - Populate `nextStateKind`, `nextStateLabel`, `stateMetadata`, and controller `metadata`; leave `eventName`, all previous-state fields, `hasChanged`, `duration`, and `transitionIndex` null.
 - If the final state is `AsyncError`, copy its `error` and `stackTrace` into the record.
 - Keep logging failure-isolated through `_writeRecordSafely`; logger and summary-hook failures must never change provider behavior.
+- Preserve `controllerDisposed` as the first registered Riverpod ref disposal signal. Invalidation may emit it before a rebuild on the same notifier; do not reinterpret it as final notifier destruction.
 - Do not start logging direct `state =` assignments outside an event dispatch.
 - Keep `blocpod_arch` independent of `blocpod_logger`; only `blocpod_arch_logger` may know both packages.
 - Use the log-facing label `state.established`.
@@ -279,6 +280,7 @@ void Function(void Function())? runBuild() {
   _logControllerCreatedOnce();
   _registerControllerDisposedOnce();
   final whenComplete = super.runBuild();
+  _logInitialStateEstablishedOnce();
   return whenComplete == null
       ? null
       : (onComplete) {
@@ -290,7 +292,7 @@ void Function(void Function())? runBuild() {
 }
 ```
 
-This verified Riverpod 3.4.2 composition preserves Riverpod's cancellation/completion behavior and its original callback ordering: a cancelled async build does not invoke the composed callback, while synchronous data and asynchronous data/error log the established state before Riverpod's original completion callback runs.
+The immediate call observes synchronous data and synchronous terminal errors already written by `super.runBuild()`. The verified Riverpod 3.4.2 composition preserves cancellation/completion behavior and original callback ordering for asynchronous builds. `_logInitialStateEstablishedOnce()` ignores `AsyncLoading`, so canceled builds and retry intermediates do not consume the one-shot.
 
 - [x] **Step 8: Construct the initialization record from the final state**
 
@@ -301,10 +303,13 @@ void _logInitialStateEstablishedOnce() {
   if (_didLogInitialStateEstablished) {
     return;
   }
-  _didLogInitialStateEstablished = true;
 
   try {
     final initialized = state;
+    if (initialized is AsyncLoading<S>) {
+      return;
+    }
+    _didLogInitialStateEstablished = true;
     final (error, stackTrace) = switch (initialized) {
       AsyncError<S>(:final error, :final stackTrace) => (error, stackTrace),
       _ => (null, null),
@@ -605,19 +610,21 @@ Prepend to `packages/arch_logger/CHANGELOG.md`:
 
 - [x] **Step 3: Update public documentation with one consistent lifecycle**
 
-Use this lifecycle everywhere it is enumerated:
+Use this build/dispatch phase order everywhere it is enumerated:
 
 ```text
-controllerCreated → initialStateEstablished → eventStarted → transition* → eventCompleted | eventFailed → controllerDisposed
+controllerCreated → initialStateEstablished → eventStarted → transition* → eventCompleted | eventFailed
 ```
 
 Document these semantics in the listed README and architecture/conventions files:
 
-- `initialStateEstablished` is emitted once after the first sync/async build settles.
+- `initialStateEstablished` is emitted once for the first terminal, non-loading sync/async build state.
+- Canceled builds and intermediate retry loading states do not emit or consume it.
 - It has no event or previous state.
 - It invokes existing `stateLabel` and `stateMetadata`; initialization passes the final state as both `previous` and `next`.
 - An `AsyncError` initialization carries `error` and `stackTrace`.
 - Compact phase text is `state.established`.
+- `controllerDisposed` is the first registered Riverpod ref disposal signal; invalidation may emit it before a rebuild on the same notifier, and it does not prove final notifier destruction.
 - Direct non-dispatch assignments remain intentionally unobserved.
 
 - [x] **Step 4: Resolve the workspace after version alignment**

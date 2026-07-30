@@ -24,6 +24,7 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
     _logControllerCreatedOnce();
     _registerControllerDisposedOnce();
     final whenComplete = super.runBuild();
+    _logInitialStateEstablishedOnce();
     return whenComplete == null
         ? null
         : (onComplete) {
@@ -161,10 +162,13 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
     if (_didLogInitialStateEstablished) {
       return;
     }
-    _didLogInitialStateEstablished = true;
 
     try {
       final initialized = state;
+      if (initialized is AsyncLoading<S>) {
+        return;
+      }
+      _didLogInitialStateEstablished = true;
       final (error, stackTrace) = switch (initialized) {
         AsyncError<S>(:final error, :final stackTrace) => (error, stackTrace),
         _ => (null, null),

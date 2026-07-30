@@ -108,7 +108,7 @@ enum EventLogPhase {
 `AsyncNotifier`의 생명주기는 원래 두 단계(생성 → 초기 상태 확립)인데 로깅 계약이 한
 단계만 표현하고 있었다. 빠진 단계를 채우는 것이지 새 개념을 도입하는 것이 아니다.
 
-### 2. `runBuild()`의 완료 콜백에서 발화
+### 2. `runBuild()`의 settled state와 완료 콜백에서 발화
 
 해결 시점의 workspace resolution은 Riverpod/flutter_riverpod `3.4.2`를 선택한다. Riverpod의
 `runBuild()`는 `WhenComplete`(`void Function(void Function())?`)를 반환하고,
@@ -123,6 +123,7 @@ void Function(void Function())? runBuild() {
   _logControllerCreatedOnce();
   _registerControllerDisposedOnce();
   final whenComplete = super.runBuild();
+  _logInitialStateEstablishedOnce();
   return whenComplete == null
       ? null
       : (onComplete) {
@@ -134,8 +135,10 @@ void Function(void Function())? runBuild() {
 }
 ```
 
-반환된 콜백을 직접 등록하는 대신 합성한다. 이로써 build가 끝난 뒤 초기 상태를 먼저 한 번만
-기록하고 Riverpod이 원래 전달한 완료 콜백을 보존해 호출한다. `_didLogControllerCreated`와
+`super.runBuild()` 직후 호출은 이미 기록된 synchronous data/error state를 관찰한다.
+asynchronous build는 반환 콜백을 직접 등록하는 대신 합성해 terminal state를 기록한 뒤
+Riverpod이 원래 전달한 완료 콜백을 보존해 호출한다. `AsyncLoading`은 기록하지 않고 one-shot
+flag도 소비하지 않으므로 retry 중간 state와 취소된 build는 무시한다. `_didLogControllerCreated`와
 같은 플래그 방식으로 재빌드 시 중복을 막는다.
 
 레코드는 **이미 존재하는 필드만** 채운다 — 새 필드가 필요 없다:
@@ -156,13 +159,23 @@ void Function(void Function())? runBuild() {
 
 ### 3. 실패 경로
 
-`build()`가 던지면 상태는 `AsyncError`다. 그때도 레코드를 남긴다 — `nextStateKind:
-error`, `error`/`stackTrace` 채움. 세션 복원 실패와 세션 부재를 구분하려는 원래 목적이
-바로 이 경로에 달려 있다.
+`build()`가 synchronous 또는 asynchronous로 terminal error를 던지면 상태는
+`AsyncError`다. 그때도 레코드를 남긴다 — `nextStateKind: error`,
+`error`/`stackTrace` 채움. retry가 예정된 오류는 `AsyncLoading(retrying: true)`이므로
+기록하지 않고, retry 성공 또는 최종 exhaustion state만 기록한다. 세션 복원 실패와 세션
+부재를 구분하려는 원래 목적이 바로 이 경로에 달려 있다.
 
 `_writeRecordSafely`를 그대로 쓰므로 로깅 자체가 던져도 컨트롤러를 깨지 않는다.
 
-### 4. `stateMetadata` 훅 시그니처
+### 4. `controllerDisposed`의 기존 의미
+
+`controllerDisposed`는 controller가 처음 등록한 Riverpod `ref.onDispose` signal이다.
+provider invalidation은 같은 notifier instance를 재사용하는 rebuild 전에 이 signal을
+발생시킬 수 있다. 따라서 이 phase는 notifier instance의 최종 파괴를 보장하지 않는다.
+이 동작은 기존 timing/semantics이므로 runtime을 바꾸지 않고 문서와 characterization test로
+명시한다.
+
+### 5. `stateMetadata` 훅 시그니처
 
 현재 `stateMetadata({required previous, required next})`는 두 인자를 요구한다. 초기화에는
 `previous`가 없다. 두 선택:
@@ -193,15 +206,18 @@ blocpod 측:
 
 1. `async build()`가 데이터를 반환하면 `initialStateEstablished` 레코드 1건, `nextStateLabel`이
    훅 반환값과 일치
-2. `build()`가 던지면 `nextStateKind: error` + `error` 채움
+2. synchronous/asynchronous `build()`가 terminal error를 던지면 `nextStateKind: error` + `error` 채움
 3. 훅 미구현 컨트롤러는 `nextStateLabel: null` — 레코드는 여전히 남는다
 4. 재빌드(의존성 무효화) 시 중복 기록 없음
 5. `sync build()`에서도 동작
-6. 기존 dispatch 경로 레코드가 변하지 않음(회귀)
+6. retry 중간 `AsyncLoading`은 무시하고 성공 또는 exhaustion terminal state만 기록
+7. in-flight build 취소는 기록하지 않고 replacement terminal state만 한 번 기록
+8. rebuild 시 첫 Riverpod ref disposal에서 `controllerDisposed`가 기록되는 기존 의미를 characterization
+9. 기존 dispatch 경로 레코드가 변하지 않음(회귀)
 
 소비자 측(이 워크스페이스, 릴리스 후):
 
-7. `SessionController` 콜드 스타트 로그에 `isAuthenticated`/`isGuest`가 나타남 —
+10. `SessionController` 콜드 스타트 로그에 `isAuthenticated`/`isGuest`가 나타남 —
    `session_controller.dart`의 기존 훅만으로, 코드 변경 없이
 
 ---
