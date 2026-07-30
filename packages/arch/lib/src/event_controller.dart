@@ -179,10 +179,7 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
           startedAt: startedAt,
           nextStateKind: asyncValueKindOf(initialized),
           nextStateLabel: _safeStateLabel(initialized),
-          stateMetadata: _safeStateMetadata(
-            previous: initialized,
-            next: initialized,
-          ),
+          stateMetadata: _safeStateMetadata(previous: initialized, next: initialized),
           error: error,
           stackTrace: stackTrace,
           metadata: _safeControllerMetadata(),

@@ -26,7 +26,10 @@ Avoid importing private `src/` files from other packages.
 
 - Core event logging flows through `EventControllerNotifier.dispatch`.
 - `blocpod_arch` emits `EventLogRecord` values through `eventLoggerProvider`.
-- Controller logs include lifecycle, event start, per-`state = ...` transition, event completion, and event failure phases.
+- Controller logs follow `controllerCreated → initialStateEstablished → eventStarted → transition* → eventCompleted | eventFailed → controllerDisposed`.
+- `initialStateEstablished` is emitted once after the first synchronous or asynchronous build settles. It has no event or previous state; it uses existing `stateLabel` and `stateMetadata` hooks, passing the final state as both `previous` and `next`. An `AsyncError` initialization includes `error` and `stackTrace`.
+- Compact formatters render the phase as `state.established`.
+- Direct `state = ...` assignments outside `dispatch` remain intentionally unobserved.
 - The default logger is `NoopEventLogger`.
 - Applications install concrete logging through provider overrides, such as `BlocpodEventLogger(DebugPrintLogSink())`.
 - Keep verbose or diagnostic metadata sanitized.

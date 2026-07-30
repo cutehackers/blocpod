@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.0
+
+- Added compact and pretty formatter support for `state.established` records.
+- Raised the minimum `blocpod_arch` dependency to `^0.2.0`.
+
 ## 0.1.3
 
 - Raised the minimum `blocpod_arch` and `blocpod_logger` dependency constraints to `^0.1.1`.

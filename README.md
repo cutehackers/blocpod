@@ -30,4 +30,6 @@ dart format --line-length 120 .
 - `blocpod_logger` must not depend on `blocpod_arch`.
 - `blocpod_arch_logger` is the only package that knows both sides.
 - Logger support is installed through sibling packages and provider overrides, not optional imports.
-- Controller observability is payload-free by default and records lifecycle, event, transition, completion, and failure phases.
+- Controller observability is payload-free by default and follows `controllerCreated → initialStateEstablished → eventStarted → transition* → eventCompleted | eventFailed → controllerDisposed`.
+- `initialStateEstablished` is emitted once after the first synchronous or asynchronous build settles. It has no event or previous state, reuses sanitized `stateLabel` and `stateMetadata` (with the final state as both `previous` and `next`), and carries `error` and `stackTrace` for an `AsyncError` result.
+- Direct `state = ...` assignments outside `dispatch` remain intentionally unobserved.

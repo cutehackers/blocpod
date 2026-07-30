@@ -62,7 +62,13 @@ Widgets and providers dispatch events through the public boundary:
 await ref.dispatch(counterProvider, const IncrementCounterEvent());
 ```
 
-During dispatch, `EventControllerNotifier` records `eventStarted`, one `transition`
-for each `state = ...` assignment, and `eventCompleted` or `eventFailed`. It also
-records controller create/dispose lifecycle events. State logging is payload-free by
-default; use `stateLabel` and `stateMetadata` only for sanitized summaries.
+`EventControllerNotifier` follows this lifecycle: `controllerCreated → initialStateEstablished → eventStarted → transition* → eventCompleted | eventFailed → controllerDisposed`.
+
+`initialStateEstablished` is emitted once after the first synchronous or asynchronous
+`build()` settles. It has no event or previous state and invokes the existing
+`stateLabel` and `stateMetadata` hooks; for initialization, the final state is passed
+as both `previous` and `next` to `stateMetadata`. An `AsyncError` result carries its
+`error` and `stackTrace`. During dispatch, one `transition` is recorded for each
+`state = ...` assignment. Direct assignments outside `dispatch` remain intentionally
+unobserved. State logging is payload-free by default; use `stateLabel` and
+`stateMetadata` only for sanitized summaries.

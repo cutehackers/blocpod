@@ -48,7 +48,7 @@ eventLoggerProvider.overrideWithValue(
 );
 ```
 
-Compact output uses log-friendly phase labels such as `event.started`, `state.transition`, and `event.completed`.
+Compact output uses log-friendly phase labels such as `state.established`, `event.started`, `state.transition`, and `event.completed`.
 Use `eventLogPhaseLabel` when custom formatters need the same phase labels.
 
 For local debugging, use `PrettyEventLogRecordFormatter`:
@@ -62,5 +62,8 @@ eventLoggerProvider.overrideWithValue(
 );
 ```
 
-Blocpod does not emit a separate BLoC-style `onChange` phase. `transition` is the canonical event-attributed state-assignment record. Pretty output renders the same transition record in a human-readable form instead of duplicating the core record stream.
+The lifecycle is `controllerCreated → initialStateEstablished → eventStarted → transition* → eventCompleted | eventFailed → controllerDisposed`.
+`state.established` is emitted once after the first synchronous or asynchronous build settles. It has no event or previous state; its sanitized state summaries come from `stateLabel` and `stateMetadata`, with the final state supplied as both `previous` and `next`. An error initialization carries its `error` and `stackTrace`.
+
+Blocpod does not emit a separate BLoC-style `onChange` phase. `transition` is the canonical event-attributed state-assignment record, so direct assignments outside `dispatch` remain intentionally unobserved. Pretty output renders the same transition record in a human-readable form instead of duplicating the core record stream.
 Pretty messages show metadata key summaries only; metadata values remain in `BlocpodLogEntry.metadata` for sink-level redaction and indexing.
