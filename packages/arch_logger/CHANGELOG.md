@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+- Formatter timestamps now use `EventLogRecord.occurredAt`, and structured
+  metadata includes the reserved `recordSequence` occurrence order when
+  present.
+- Documented compatibility with Blocpod's event-local dispatch outcomes and
+  synchronous, neutral-context, non-reentrant FIFO logger delivery.
+
 ## 0.2.0
 
 - Added compact and pretty formatter support for `state.established` records.

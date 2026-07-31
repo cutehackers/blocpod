@@ -11,10 +11,11 @@ Blocpod's architecture source contract lives in the workspace packages:
 3. `packages/arch/lib/src/event_controller.dart`
 4. `packages/arch/lib/src/event_dispatch_context.dart`
 5. `packages/arch/lib/src/trace_context.dart`
-6. `packages/arch/lib/src/event_log_record.dart`
-7. `packages/arch/lib/src/event_logger.dart`
-8. `packages/logger/lib/src/`
-9. `packages/arch_logger/lib/src/`
+6. `packages/arch/lib/src/observation_runtime.dart`
+7. `packages/arch/lib/src/event_log_record.dart`
+8. `packages/arch/lib/src/event_logger.dart`
+9. `packages/logger/lib/src/`
+10. `packages/arch_logger/lib/src/`
 
 Applications import the stable public barrels:
 
@@ -49,6 +50,47 @@ The observer stream follows the BLoCObserver model while staying Riverpod-native
 
 Blocpod intentionally does not emit a separate BLoC-style `onChange` phase. BLoC's `onChange` observes `BlocBase.emit` with only current and next state, while Blocpod's `transition` observes Riverpod `AsyncValue` state assignments inside dispatch and keeps the event attribution. Direct non-dispatch assignments remain intentionally unobserved. Human-readable formatters may render a transition in a BLoC-observer-like style, but the core record stream stays single-source and avoids duplicate state-change records.
 
-The internal `EventDispatchContext` is stored in the async zone during dispatch and carries the trace/span ids, event name, sanitized event metadata, start time, and transition index. Nested dispatches create child spans inside the same trace. Concurrent dispatches keep attribution through their async zone.
+The internal `EventDispatchContext` is stored in the async zone during dispatch
+and carries notifier ownership by identity, active lifetime, parent context,
+trace/span ids, event name, sanitized event metadata, start time, and transition
+index. It attributes a state assignment only while active and only to its owning
+notifier. Cross-controller writes and work inherited after context closure may
+still change state, but they are not recorded as transitions of the observed
+event. Nested dispatches create child spans inside the same trace. Concurrent
+dispatches keep attribution through their async zone.
+
+Each active dispatch also owns an event-local observation ledger. Its terminal
+state is the state at admission or the latest state write owned by that event,
+not a completion-time read of shared controller state. Concurrent siblings
+therefore retain independent outcomes. An awaited same-controller child folds
+its outcome into a still-active parent, subject to later parent writes. Dart
+zones cannot reveal whether an in-flight child `Future` will later be awaited,
+so a child that settles while its parent is active is treated as causal even if
+that `Future` was not awaited. A child settling after parent closure is not
+folded.
+
+The internal observation runtime has isolate lifetime and owns both occurrence
+sequencing and logger delivery. `startedAt` identifies the lifecycle occurrence
+or dispatch span start; `occurredAt` captures each phase occurrence in UTC; and
+`recordSequence` is a strictly increasing, isolate-local occurrence order.
+Dispatch duration uses monotonic `Stopwatch.elapsed`. Occurrence fields are
+allocated before delivery, so logger latency cannot change timestamps or
+sequence.
+
+Every framework logger write, including the logger captured for
+`controllerDisposed`, enters one synchronous isolate-wide FIFO queue together
+with its immutable `EventLogRecord` and target `EventLogger`. The first emitter
+drains immediately. If a callback synchronously creates another record, that
+record is appended and delivered only after the current callback returns, so
+callback depth never exceeds one and delivery follows `recordSequence`.
+Callbacks run with both event-dispatch and trace zone markers explicitly
+masked; logger-started state work is independent and logger-started dispatches
+begin root traces. Each logger failure is caught independently and draining
+continues without changing state, dispatch results, original handler errors,
+provider lifecycle, or disposal.
+
+This boundary is intentionally synchronous: a slow logger delays the emitter.
+Blocpod does not add microtasks, a bounded queue, a drop policy, or durable
+delivery. Asynchronous buffering, when needed, belongs in the adapter.
 
 State logging is payload-free by default. Records include state kinds such as `loading`, `data`, or `error`; controllers may opt in to sanitized `stateLabel` and `stateMetadata` summaries. Controllers must not log raw state payloads, secrets, tokens, credentials, or passwords.

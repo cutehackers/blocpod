@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Added `occurredAt` and isolate-local `recordSequence` observation fields while
+  keeping `startedAt` as span start and measuring dispatch duration
+  monotonically.
+- Isolated concurrent and nested dispatch completion with notifier-owned,
+  event-local outcomes and closed-context attribution rules.
+- Added synchronous, isolate-wide non-reentrant FIFO logger delivery with
+  neutral callback context and per-record error isolation.
+
 ## 0.2.0
 
 - Added `EventLogPhase.initialStateEstablished` for the initial `AsyncValue` established by `EventControllerNotifier.build()`.
