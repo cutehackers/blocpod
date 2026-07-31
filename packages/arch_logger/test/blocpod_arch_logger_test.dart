@@ -281,6 +281,25 @@ void main() {
       expect(entry.metadata, containsPair('hasChanged', true));
     });
 
+    test('pretty formatter hides caller recordSequence while preserving structured sequence', () {
+      final startedAt = DateTime.utc(2026, 7, 31, 9);
+      final record = EventLogRecord(
+        phase: EventLogPhase.transition,
+        traceContext: TraceContext.root(startedAt: startedAt),
+        controllerName: 'CounterController',
+        eventName: 'IncrementEvent',
+        startedAt: startedAt,
+        recordSequence: 42,
+        metadata: const <String, Object?>{'recordSequence': -1, 'feature': 'counter'},
+      );
+
+      final entry = const PrettyEventLogRecordFormatter().format(record);
+
+      expect(entry.metadata, containsPair('recordSequence', 42));
+      expect(entry.message, contains('eventMetadataKeys: feature'));
+      expect(entry.message, isNot(contains('recordSequence')));
+    });
+
     test('pretty formatter renders initialized state without inventing an event or previous state', () {
       const formatter = PrettyEventLogRecordFormatter();
 

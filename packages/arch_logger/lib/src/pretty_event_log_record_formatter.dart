@@ -4,6 +4,7 @@ import 'package:blocpod_logger/blocpod_logger.dart';
 import 'event_log_record_formatter.dart';
 
 const Set<String> _prettyReservedMetadataKeys = <String>{
+  'recordSequence',
   'phase',
   'traceId',
   'spanId',
