@@ -2,6 +2,7 @@ import 'package:blocpod_arch/blocpod_arch.dart';
 import 'package:blocpod_logger/blocpod_logger.dart';
 
 const Set<String> _reservedMetadataKeys = <String>{
+  'recordSequence',
   'phase',
   'traceId',
   'spanId',
@@ -46,10 +47,11 @@ final class EventLogRecordFormatter implements BlocpodEventLogFormatter {
     return BlocpodLogEntry(
       level: record.error == null ? BlocpodLogLevel.info : BlocpodLogLevel.error,
       message: _messageFor(record),
-      timestamp: record.startedAt,
+      timestamp: record.occurredAt,
       metadata: <String, Object?>{
         for (final entry in record.metadata.entries)
           if (!_reservedMetadataKeys.contains(entry.key)) entry.key: entry.value,
+        if (record.recordSequence != null) 'recordSequence': record.recordSequence,
         'phase': eventLogPhaseLabel(record.phase),
         'traceId': record.traceContext.traceId,
         'spanId': record.traceContext.spanId,

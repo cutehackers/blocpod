@@ -46,6 +46,73 @@ void main() {
       expect(entry.stackTrace, isNull);
     });
 
+    test('uses occurredAt as the log entry timestamp', () {
+      final startedAt = DateTime.utc(2026, 7, 31, 9);
+      final occurredAt = startedAt.add(const Duration(milliseconds: 25));
+      final record = EventLogRecord(
+        phase: EventLogPhase.eventCompleted,
+        traceContext: TraceContext.root(startedAt: startedAt),
+        controllerName: 'CounterController',
+        eventName: 'IncrementEvent',
+        startedAt: startedAt,
+        occurredAt: occurredAt,
+      );
+
+      final entry = const EventLogRecordFormatter().format(record);
+
+      expect(entry.timestamp, occurredAt);
+      expect(entry.timestamp, isNot(startedAt));
+    });
+
+    test('includes a non-null recordSequence in structured metadata', () {
+      final startedAt = DateTime.utc(2026, 7, 31, 9);
+      final record = EventLogRecord(
+        phase: EventLogPhase.eventCompleted,
+        traceContext: TraceContext.root(startedAt: startedAt),
+        controllerName: 'CounterController',
+        startedAt: startedAt,
+        recordSequence: 42,
+      );
+
+      final entry = const EventLogRecordFormatter().format(record);
+
+      expect(entry.metadata, containsPair('recordSequence', 42));
+    });
+
+    test('omits recordSequence when it is null', () {
+      final entry = const EventLogRecordFormatter().format(eventRecord());
+
+      expect(entry.metadata.containsKey('recordSequence'), isFalse);
+    });
+
+    test('caller metadata cannot override recordSequence', () {
+      final startedAt = DateTime.utc(2026, 7, 31, 9);
+      final traceContext = TraceContext.root(startedAt: startedAt);
+      final formatter = const EventLogRecordFormatter();
+      final sequencedEntry = formatter.format(
+        EventLogRecord(
+          phase: EventLogPhase.eventCompleted,
+          traceContext: traceContext,
+          controllerName: 'CounterController',
+          startedAt: startedAt,
+          recordSequence: 42,
+          metadata: const <String, Object?>{'recordSequence': -1},
+        ),
+      );
+      final unsequencedEntry = formatter.format(
+        EventLogRecord(
+          phase: EventLogPhase.eventCompleted,
+          traceContext: traceContext,
+          controllerName: 'CounterController',
+          startedAt: startedAt,
+          metadata: const <String, Object?>{'recordSequence': -1},
+        ),
+      );
+
+      expect(sequencedEntry.metadata, containsPair('recordSequence', 42));
+      expect(unsequencedEntry.metadata.containsKey('recordSequence'), isFalse);
+    });
+
     test('preserves reserved bridge metadata on caller collisions', () {
       final sink = MemoryLogSink();
       final logger = BlocpodEventLogger(sink);

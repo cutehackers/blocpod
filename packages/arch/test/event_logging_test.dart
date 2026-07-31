@@ -754,6 +754,46 @@ void main() {
     expect(() => record.stateMetadata['state'] = 'changed', throwsUnsupportedError);
   });
 
+  test('EventLogRecord defaults occurredAt to startedAt', () {
+    final startedAt = DateTime.utc(2026, 7, 31, 9);
+    final record = EventLogRecord(
+      phase: EventLogPhase.eventStarted,
+      traceContext: TraceContext.root(startedAt: startedAt),
+      controllerName: 'LoggingController',
+      startedAt: startedAt,
+    );
+
+    expect(record.occurredAt, startedAt);
+  });
+
+  test('EventLogRecord preserves an explicit occurredAt', () {
+    final startedAt = DateTime.utc(2026, 7, 31, 9);
+    final occurredAt = startedAt.add(const Duration(milliseconds: 25));
+    final record = EventLogRecord(
+      phase: EventLogPhase.eventCompleted,
+      traceContext: TraceContext.root(startedAt: startedAt),
+      controllerName: 'LoggingController',
+      startedAt: startedAt,
+      occurredAt: occurredAt,
+    );
+
+    expect(record.startedAt, startedAt);
+    expect(record.occurredAt, occurredAt);
+  });
+
+  test('EventLogRecord preserves an explicit recordSequence', () {
+    final startedAt = DateTime.utc(2026, 7, 31, 9);
+    final record = EventLogRecord(
+      phase: EventLogPhase.eventCompleted,
+      traceContext: TraceContext.root(startedAt: startedAt),
+      controllerName: 'LoggingController',
+      startedAt: startedAt,
+      recordSequence: 42,
+    );
+
+    expect(record.recordSequence, 42);
+  });
+
   test('TraceContext.run exposes current context only inside the async zone', () async {
     final context = TraceContext.root(startedAt: DateTime.utc(2026, 6));
 

@@ -25,6 +25,8 @@ final class EventLogRecord {
     required this.controllerName,
     this.eventName,
     required this.startedAt,
+    DateTime? occurredAt,
+    this.recordSequence,
     this.duration,
     this.transitionIndex,
     this.previousStateKind,
@@ -36,7 +38,8 @@ final class EventLogRecord {
     this.error,
     this.stackTrace,
     Map<String, Object?> metadata = const {},
-  }) : stateMetadata = snapshotMetadata(stateMetadata),
+  }) : occurredAt = occurredAt ?? startedAt,
+       stateMetadata = snapshotMetadata(stateMetadata),
        metadata = snapshotMetadata(metadata);
 
   final EventLogPhase phase;
@@ -44,6 +47,8 @@ final class EventLogRecord {
   final String controllerName;
   final String? eventName;
   final DateTime startedAt;
+  final DateTime occurredAt;
+  final int? recordSequence;
   final Duration? duration;
   final int? transitionIndex;
   final AsyncValueKind? previousStateKind;
