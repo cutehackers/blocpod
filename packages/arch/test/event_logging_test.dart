@@ -982,7 +982,7 @@ void main() {
     expect(allSequences.toSet(), hasLength(allSequences.length));
   });
 
-  test('dispatch phase occurrences advance while span start stays fixed and duration covers controlled wait', () async {
+  test('dispatch phases share span start and use sequence ordering while duration covers controlled wait', () async {
     final logger = CollectingEventLogger();
     final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
     addTearDown(container.dispose);
@@ -1005,7 +1005,6 @@ void main() {
         );
     await entered.future;
     final controlledWait = Stopwatch()..start();
-    await Future<void>.delayed(const Duration(milliseconds: 10));
     releaseTransition.complete();
     await transitioned.future;
     await Future<void>.delayed(const Duration(milliseconds: 10));
@@ -1019,12 +1018,17 @@ void main() {
       EventLogPhase.transition,
       EventLogPhase.eventCompleted,
     ]);
-    expect(records.map((record) => record.startedAt).toSet(), <DateTime>{records.first.startedAt});
-    final started = records[0];
-    final transition = records[1];
+    final spanStartedAt = records.first.startedAt;
+    expect(records.map((record) => record.startedAt), everyElement(same(spanStartedAt)));
+    expect(records, everyElement(isA<EventLogRecord>().having((record) => record.occurredAt.isUtc, 'UTC', isTrue)));
+    expect(
+      records,
+      everyElement(isA<EventLogRecord>().having((record) => record.recordSequence, 'recordSequence', isNotNull)),
+    );
+    final sequences = records.map((record) => record.recordSequence!).toList();
+    expect(sequences, orderedEquals(sequences.toList()..sort()));
+    expect(sequences.toSet(), hasLength(sequences.length));
     final completed = records[2];
-    expect(started.occurredAt.isBefore(transition.occurredAt), isTrue);
-    expect(transition.occurredAt.isAfter(completed.occurredAt), isFalse);
     expect(completed.duration, isNotNull);
     expect(completed.duration!.isNegative, isFalse);
     expect(completed.duration, greaterThanOrEqualTo(controlledWait.elapsed));
