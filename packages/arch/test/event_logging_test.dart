@@ -982,7 +982,7 @@ void main() {
     expect(allSequences.toSet(), hasLength(allSequences.length));
   });
 
-  test('terminal duration covers controlled handler wait and is non-negative', () async {
+  test('dispatch phase occurrences advance while span start stays fixed and duration covers controlled wait', () async {
     final logger = CollectingEventLogger();
     final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
     addTearDown(container.dispose);
@@ -1005,6 +1005,7 @@ void main() {
         );
     await entered.future;
     final controlledWait = Stopwatch()..start();
+    await Future<void>.delayed(const Duration(milliseconds: 10));
     releaseTransition.complete();
     await transitioned.future;
     await Future<void>.delayed(const Duration(milliseconds: 10));
@@ -1012,9 +1013,18 @@ void main() {
     releaseCompletion.complete();
     await dispatch;
 
-    final completed = logger.records.singleWhere(
-      (record) => record.eventName == 'GatedPhaseEvent' && record.phase == EventLogPhase.eventCompleted,
-    );
+    final records = logger.records.where((record) => record.eventName == 'GatedPhaseEvent').toList();
+    expect(records.map((record) => record.phase), <EventLogPhase>[
+      EventLogPhase.eventStarted,
+      EventLogPhase.transition,
+      EventLogPhase.eventCompleted,
+    ]);
+    expect(records.map((record) => record.startedAt).toSet(), <DateTime>{records.first.startedAt});
+    final started = records[0];
+    final transition = records[1];
+    final completed = records[2];
+    expect(started.occurredAt.isBefore(transition.occurredAt), isTrue);
+    expect(transition.occurredAt.isAfter(completed.occurredAt), isFalse);
     expect(completed.duration, isNotNull);
     expect(completed.duration!.isNegative, isFalse);
     expect(completed.duration, greaterThanOrEqualTo(controlledWait.elapsed));

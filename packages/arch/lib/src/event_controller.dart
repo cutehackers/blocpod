@@ -113,8 +113,8 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
       stackTrace = caughtStackTrace;
       Error.throwWithStackTrace(caughtError, caughtStackTrace);
     } finally {
-      dispatchStopwatch.stop();
       dispatchContext.close();
+      dispatchStopwatch.stop();
       final terminalOccurrence = ObservationOccurrence.capture();
       final outcome = observation.outcome;
       _foldOwnedOutcomeIntoParent(dispatchContext, observation);
