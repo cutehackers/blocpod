@@ -53,7 +53,30 @@ final class ConcurrentSecondEvent extends LoggingEvent {
   const ConcurrentSecondEvent();
 }
 
+final class DirectWriteEvent extends LoggingEvent {
+  const DirectWriteEvent(this.write);
+
+  final void Function() write;
+}
+
+final class InheritedWriteEvent extends LoggingEvent {
+  const InheritedWriteEvent({required this.trigger, required this.completed});
+
+  final Future<void> trigger;
+  final Completer<void> completed;
+}
+
+final class InheritedDispatchEvent extends LoggingEvent {
+  const InheritedDispatchEvent({required this.trigger, required this.dispatch, required this.completed});
+
+  final Future<void> trigger;
+  final Future<void> Function() dispatch;
+  final Completer<void> completed;
+}
+
 final loggingProvider = AsyncNotifierProvider<LoggingController, int>(LoggingController.new);
+
+final otherLoggingProvider = AsyncNotifierProvider<LoggingController, int>(LoggingController.new);
 
 final explodingEqualityProvider = AsyncNotifierProvider<ExplodingEqualityController, ExplodingEquality>(
   ExplodingEqualityController.new,
@@ -130,7 +153,26 @@ final class LoggingController extends EventControllerNotifier<int, LoggingEvent>
       case ConcurrentSecondEvent():
         state = const AsyncData(200);
         await Future<void>.delayed(Duration.zero);
+      case DirectWriteEvent(:final write):
+        write();
+      case InheritedWriteEvent(:final trigger, :final completed):
+        unawaited(
+          trigger.then((_) {
+            state = const AsyncData(88);
+            completed.complete();
+          }),
+        );
+      case InheritedDispatchEvent(:final trigger, :final dispatch, :final completed):
+        unawaited(() async {
+          await trigger;
+          await dispatch();
+          completed.complete();
+        }());
     }
+  }
+
+  void setDirectly(int value) {
+    state = AsyncData(value);
   }
 
   @override
@@ -147,6 +189,9 @@ final class LoggingController extends EventControllerNotifier<int, LoggingEvent>
       ThrowStateSummaryEvent() => const {'kind': 'throw-state-summary'},
       ConcurrentFirstEvent() => const {'kind': 'concurrent-first'},
       ConcurrentSecondEvent() => const {'kind': 'concurrent-second'},
+      DirectWriteEvent() => const {'kind': 'direct-write'},
+      InheritedWriteEvent() => const {'kind': 'inherited-write'},
+      InheritedDispatchEvent() => const {'kind': 'inherited-dispatch'},
     };
   }
 
@@ -304,6 +349,14 @@ final class ThrowingEventLogger implements EventLogger {
   void log(EventLogRecord record) {
     throw StateError('logger failed');
   }
+}
+
+final class _EqualOwner {
+  @override
+  bool operator ==(Object other) => other is _EqualOwner;
+
+  @override
+  int get hashCode => 0;
 }
 
 void main() {
@@ -606,6 +659,50 @@ void main() {
     expect(firstTransitions.single.traceContext.traceId, isNot(secondTransitions.single.traceContext.traceId));
   });
 
+  test('state writes are attributed only to their owning controller instance', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+    final controllerA = container.read(loggingProvider.notifier);
+    final controllerB = container.read(otherLoggingProvider.notifier);
+    await Future.wait(<Future<int>>[
+      container.read(loggingProvider.future),
+      container.read(otherLoggingProvider.future),
+    ]);
+
+    await controllerA.dispatch(DirectWriteEvent(() => controllerB.setDirectly(77)));
+
+    expect(container.read(otherLoggingProvider), isA<AsyncData<int>>().having((value) => value.value, 'value', 77));
+    expect(
+      logger.records.where(
+        (record) => record.phase == EventLogPhase.transition && record.eventName == 'DirectWriteEvent',
+      ),
+      isEmpty,
+    );
+  });
+
+  test('state writes inherited after dispatch closes are not attributed', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+    final trigger = Completer<void>();
+    final completed = Completer<void>();
+
+    await container
+        .read(loggingProvider.notifier)
+        .dispatch(InheritedWriteEvent(trigger: trigger.future, completed: completed));
+    trigger.complete();
+    await completed.future;
+
+    expect(container.read(loggingProvider), isA<AsyncData<int>>().having((value) => value.value, 'value', 88));
+    expect(
+      logger.records.where(
+        (record) => record.phase == EventLogPhase.transition && record.eventName == 'InheritedWriteEvent',
+      ),
+      isEmpty,
+    );
+  });
+
   test('state summary failures do not break transitions', () async {
     final logger = CollectingEventLogger();
     final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
@@ -683,6 +780,52 @@ void main() {
     expect(parent.traceContext.parentSpanId, isNull);
     expect(child.traceContext.parentSpanId, parent.traceContext.spanId);
     expect(child.traceContext.spanId, isNot(parent.traceContext.spanId));
+  });
+
+  test('dispatch inherited from a closed dispatch zone starts a root trace', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+    final controller = container.read(loggingProvider.notifier);
+    final trigger = Completer<void>();
+    final completed = Completer<void>();
+
+    await controller.dispatch(
+      InheritedDispatchEvent(
+        trigger: trigger.future,
+        dispatch: () => controller.dispatch(const IncrementEvent()),
+        completed: completed,
+      ),
+    );
+    trigger.complete();
+    await completed.future;
+
+    final staleParent = logger.records.singleWhere(
+      (record) => record.eventName == 'InheritedDispatchEvent' && record.phase == EventLogPhase.eventCompleted,
+    );
+    final laterDispatch = logger.records.singleWhere(
+      (record) => record.eventName == 'IncrementEvent' && record.phase == EventLogPhase.eventCompleted,
+    );
+    expect(laterDispatch.traceContext.traceId, isNot(staleParent.traceContext.traceId));
+    expect(laterDispatch.traceContext.parentSpanId, isNull);
+  });
+
+  test('dispatch inside an explicit trace context creates a child span', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+    final explicitParent = TraceContext.root(startedAt: DateTime.utc(2026, 7, 31));
+
+    await TraceContext.run(
+      explicitParent,
+      () => container.read(loggingProvider.notifier).dispatch(const IncrementEvent()),
+    );
+
+    final child = logger.records.singleWhere(
+      (record) => record.eventName == 'IncrementEvent' && record.phase == EventLogPhase.eventCompleted,
+    );
+    expect(child.traceContext.traceId, explicitParent.traceId);
+    expect(child.traceContext.parentSpanId, explicitParent.spanId);
   });
 
   test('metadata failures do not break successful dispatches', () async {
@@ -806,8 +949,10 @@ void main() {
   });
 
   test('EventDispatchContext.run exposes current context inside the async zone', () async {
+    final owner = Object();
     final traceContext = TraceContext.root(startedAt: DateTime.utc(2026, 6));
     final dispatchContext = EventDispatchContext(
+      owner: owner,
       traceContext: traceContext,
       controllerName: 'LoggingController',
       eventName: 'IncrementEvent',
@@ -815,18 +960,84 @@ void main() {
     );
 
     expect(EventDispatchContext.current, isNull);
+    expect(EventDispatchContext.hasAmbientContext, isFalse);
     await EventDispatchContext.run(dispatchContext, () async {
       await Future<void>.delayed(Duration.zero);
       expect(TraceContext.current, same(traceContext));
       expect(EventDispatchContext.current, same(dispatchContext));
+      expect(EventDispatchContext.currentFor(owner), same(dispatchContext));
+      expect(EventDispatchContext.currentFor(Object()), isNull);
+      expect(EventDispatchContext.hasAmbientContext, isTrue);
     });
     expect(EventDispatchContext.current, isNull);
+    expect(EventDispatchContext.hasAmbientContext, isFalse);
+  });
+
+  test('EventDispatchContext ownership uses identity', () {
+    final owner = _EqualOwner();
+    final equalButDistinctOwner = _EqualOwner();
+    final dispatchContext = EventDispatchContext(
+      owner: owner,
+      traceContext: TraceContext.root(startedAt: DateTime.utc(2026, 6)),
+      controllerName: 'LoggingController',
+      eventName: 'IncrementEvent',
+      startedAt: DateTime.utc(2026, 6),
+    );
+
+    expect(dispatchContext.owns(owner), isTrue);
+    expect(dispatchContext.owns(Object()), isFalse);
+    expect(dispatchContext.owns(equalButDistinctOwner), isFalse);
+  });
+
+  test('closed EventDispatchContext is stale but no longer current', () async {
+    final owner = Object();
+    final dispatchContext = EventDispatchContext(
+      owner: owner,
+      traceContext: TraceContext.root(startedAt: DateTime.utc(2026, 6)),
+      controllerName: 'LoggingController',
+      eventName: 'IncrementEvent',
+      startedAt: DateTime.utc(2026, 6),
+    );
+
+    await EventDispatchContext.run(dispatchContext, () async {
+      expect(dispatchContext.isActive, isTrue);
+      expect(EventDispatchContext.current, same(dispatchContext));
+
+      dispatchContext.close();
+      dispatchContext.close();
+
+      expect(dispatchContext.isActive, isFalse);
+      expect(EventDispatchContext.current, isNull);
+      expect(EventDispatchContext.currentFor(owner), isNull);
+      expect(EventDispatchContext.hasAmbientContext, isTrue);
+    });
+  });
+
+  test('EventDispatchContext retains its parent context', () {
+    final parent = EventDispatchContext(
+      owner: Object(),
+      traceContext: TraceContext.root(startedAt: DateTime.utc(2026, 6)),
+      controllerName: 'LoggingController',
+      eventName: 'ParentEvent',
+      startedAt: DateTime.utc(2026, 6),
+    );
+    final child = EventDispatchContext(
+      owner: Object(),
+      parent: parent,
+      traceContext: parent.traceContext.child(),
+      controllerName: 'LoggingController',
+      eventName: 'ChildEvent',
+      startedAt: DateTime.utc(2026, 6),
+    );
+
+    expect(child.parent, same(parent));
   });
 
   test('EventDispatchContext snapshots metadata maps', () {
     final metadata = <String, Object?>{'kind': 'original'};
     final traceContext = TraceContext.root(startedAt: DateTime.utc(2026, 6));
     final dispatchContext = EventDispatchContext(
+      owner: Object(),
       traceContext: traceContext,
       controllerName: 'LoggingController',
       eventName: 'IncrementEvent',

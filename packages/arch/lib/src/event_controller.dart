@@ -14,6 +14,8 @@ abstract class EventController<E> {
 
 /// Riverpod [AsyncNotifier] base class with a single event dispatch boundary.
 abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements EventController<E> {
+  final Object _dispatchOwner = Object();
+
   bool _didLogControllerCreated = false;
   bool _didLogInitialStateEstablished = false;
   bool _didRegisterControllerDisposed = false;
@@ -37,7 +39,7 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
 
   @override
   set state(AsyncValue<S> next) {
-    final dispatchContext = EventDispatchContext.current;
+    final dispatchContext = EventDispatchContext.currentFor(_dispatchOwner);
     if (dispatchContext == null) {
       super.state = next;
       return;
@@ -66,11 +68,16 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
     final safeControllerName = _safeControllerName();
     final safeEventName = _safeEventName(event);
     final safeMetadata = _safeDispatchMetadataFor(event);
-    final parentTraceContext = TraceContext.current;
+    final parentDispatchContext = EventDispatchContext.current;
+    final parentTraceContext = EventDispatchContext.hasAmbientContext
+        ? parentDispatchContext?.traceContext
+        : TraceContext.current;
     final traceContext = parentTraceContext == null
         ? TraceContext.root(startedAt: startedAt)
         : parentTraceContext.child(startedAt: startedAt);
     final dispatchContext = EventDispatchContext(
+      owner: _dispatchOwner,
+      parent: parentDispatchContext,
       traceContext: traceContext,
       controllerName: safeControllerName,
       eventName: safeEventName,
@@ -91,6 +98,7 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
       stackTrace = caughtStackTrace;
       Error.throwWithStackTrace(caughtError, caughtStackTrace);
     } finally {
+      dispatchContext.close();
       _logEventFinishedSafely(dispatchContext: dispatchContext, before: before, error: error, stackTrace: stackTrace);
     }
   }
