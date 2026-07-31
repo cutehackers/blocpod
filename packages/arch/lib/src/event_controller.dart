@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'event_dispatch_context.dart';
 import 'event_log_record.dart';
 import 'event_logger.dart';
+import 'observation_occurrence.dart';
 import 'trace_context.dart';
 
 /// Public dispatch boundary for event-driven controllers.
@@ -54,9 +55,11 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
       previous = null;
     }
 
+    final observation = _activeObservations[dispatchContext];
+
     super.state = next;
 
-    final observation = _activeObservations[dispatchContext];
+    final occurrence = previous != null && observation != null ? ObservationOccurrence.capture() : null;
     if (observation == null) {
       return;
     }
@@ -64,7 +67,7 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
     observation.recordOwnedState(next, writeOrdinal: _nextOwnedWriteOrdinal);
 
     if (previous != null) {
-      _logTransitionSafely(dispatchContext: dispatchContext, previous: previous, next: next);
+      _logTransitionSafely(dispatchContext: dispatchContext, occurrence: occurrence!, previous: previous, next: next);
     }
   }
 
@@ -74,6 +77,7 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
 
     final before = state;
     final startedAt = DateTime.now().toUtc();
+    final dispatchStopwatch = Stopwatch()..start();
     final safeControllerName = _safeControllerName();
     final safeEventName = _safeEventName(event);
     final safeMetadata = _safeDispatchMetadataFor(event);
@@ -109,12 +113,16 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
       stackTrace = caughtStackTrace;
       Error.throwWithStackTrace(caughtError, caughtStackTrace);
     } finally {
+      dispatchStopwatch.stop();
       dispatchContext.close();
+      final terminalOccurrence = ObservationOccurrence.capture();
       final outcome = observation.outcome;
       _foldOwnedOutcomeIntoParent(dispatchContext, observation);
       _activeObservations.remove(dispatchContext);
       _logEventFinishedSafely(
         dispatchContext: dispatchContext,
+        occurrence: terminalOccurrence,
+        duration: dispatchStopwatch.elapsed,
         stateAtStart: observation.stateAtStart,
         outcome: outcome,
         error: error,
@@ -173,7 +181,8 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
     }
     _didLogControllerCreated = true;
 
-    final startedAt = DateTime.now().toUtc();
+    final occurrence = ObservationOccurrence.capture();
+    final startedAt = occurrence.occurredAt;
     final traceContext = TraceContext.root(startedAt: startedAt);
     _writeRecordSafely(
       EventLogRecord(
@@ -181,6 +190,8 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
         traceContext: traceContext,
         controllerName: _safeControllerName(),
         startedAt: startedAt,
+        occurredAt: occurrence.occurredAt,
+        recordSequence: occurrence.recordSequence,
         metadata: _safeControllerMetadata(),
       ),
     );
@@ -201,7 +212,8 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
         AsyncError<S>(:final error, :final stackTrace) => (error, stackTrace),
         _ => (null, null),
       };
-      final startedAt = DateTime.now().toUtc();
+      final occurrence = ObservationOccurrence.capture();
+      final startedAt = occurrence.occurredAt;
       final traceContext = TraceContext.root(startedAt: startedAt);
       _writeRecordSafely(
         EventLogRecord(
@@ -209,6 +221,8 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
           traceContext: traceContext,
           controllerName: _safeControllerName(),
           startedAt: startedAt,
+          occurredAt: occurrence.occurredAt,
+          recordSequence: occurrence.recordSequence,
           nextStateKind: asyncValueKindOf(initialized),
           nextStateLabel: _safeStateLabel(initialized),
           stateMetadata: _safeStateMetadata(previous: initialized, next: initialized),
@@ -230,7 +244,8 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
 
     final logger = _readLoggerSafely();
     ref.onDispose(() {
-      final startedAt = DateTime.now().toUtc();
+      final occurrence = ObservationOccurrence.capture();
+      final startedAt = occurrence.occurredAt;
       final traceContext = TraceContext.root(startedAt: startedAt);
       _writeRecordToLoggerSafely(
         logger,
@@ -239,6 +254,8 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
           traceContext: traceContext,
           controllerName: _safeControllerName(),
           startedAt: startedAt,
+          occurredAt: occurrence.occurredAt,
+          recordSequence: occurrence.recordSequence,
           metadata: _safeControllerMetadata(),
         ),
       );
@@ -246,6 +263,7 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
   }
 
   void _logEventStartedSafely({required EventDispatchContext dispatchContext, required AsyncValue<S> before}) {
+    final occurrence = ObservationOccurrence.capture();
     _writeRecordSafely(
       EventLogRecord(
         phase: EventLogPhase.eventStarted,
@@ -253,6 +271,8 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
         controllerName: dispatchContext.controllerName,
         eventName: dispatchContext.eventName,
         startedAt: dispatchContext.startedAt,
+        occurredAt: occurrence.occurredAt,
+        recordSequence: occurrence.recordSequence,
         previousStateKind: asyncValueKindOf(before),
         previousStateLabel: _safeStateLabel(before),
         metadata: dispatchContext.metadata,
@@ -262,6 +282,7 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
 
   void _logTransitionSafely({
     required EventDispatchContext dispatchContext,
+    required ObservationOccurrence occurrence,
     required AsyncValue<S> previous,
     required AsyncValue<S> next,
   }) {
@@ -271,7 +292,9 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
         traceContext: dispatchContext.traceContext,
         controllerName: dispatchContext.controllerName,
         eventName: dispatchContext.eventName,
-        startedAt: DateTime.now().toUtc(),
+        startedAt: dispatchContext.startedAt,
+        occurredAt: occurrence.occurredAt,
+        recordSequence: occurrence.recordSequence,
         transitionIndex: dispatchContext.nextTransitionIndex(),
         previousStateKind: asyncValueKindOf(previous),
         nextStateKind: asyncValueKindOf(next),
@@ -286,6 +309,8 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
 
   void _logEventFinishedSafely({
     required EventDispatchContext dispatchContext,
+    required ObservationOccurrence occurrence,
+    required Duration duration,
     required AsyncValue<S> stateAtStart,
     required AsyncValue<S> outcome,
     required Object? error,
@@ -299,7 +324,9 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
           controllerName: dispatchContext.controllerName,
           eventName: dispatchContext.eventName,
           startedAt: dispatchContext.startedAt,
-          duration: DateTime.now().toUtc().difference(dispatchContext.startedAt),
+          occurredAt: occurrence.occurredAt,
+          recordSequence: occurrence.recordSequence,
+          duration: duration,
           previousStateKind: asyncValueKindOf(stateAtStart),
           nextStateKind: asyncValueKindOf(outcome),
           hasChanged: !identical(stateAtStart, outcome),

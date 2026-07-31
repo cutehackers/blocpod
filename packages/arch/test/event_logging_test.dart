@@ -53,6 +53,32 @@ final class ConcurrentSecondEvent extends LoggingEvent {
   const ConcurrentSecondEvent();
 }
 
+final class GatedPhaseEvent extends LoggingEvent {
+  const GatedPhaseEvent({
+    required this.name,
+    required this.entered,
+    required this.releaseTransition,
+    required this.transitioned,
+    required this.releaseCompletion,
+    required this.value,
+  });
+
+  final String name;
+  final Completer<void> entered;
+  final Future<void> releaseTransition;
+  final Completer<void> transitioned;
+  final Future<void> releaseCompletion;
+  final int value;
+}
+
+final class GatedFailureEvent extends LoggingEvent {
+  const GatedFailureEvent({required this.entered, required this.release, required this.error});
+
+  final Completer<void> entered;
+  final Future<void> release;
+  final StateError error;
+}
+
 final class NoWriteEvent extends LoggingEvent {
   const NoWriteEvent({required this.entered, required this.release});
 
@@ -259,6 +285,22 @@ final class LoggingController extends EventControllerNotifier<int, LoggingEvent>
       case ConcurrentSecondEvent():
         state = const AsyncData(200);
         await Future<void>.delayed(Duration.zero);
+      case GatedPhaseEvent(
+        :final entered,
+        :final releaseTransition,
+        :final transitioned,
+        :final releaseCompletion,
+        :final value,
+      ):
+        entered.complete();
+        await releaseTransition;
+        state = AsyncData(value);
+        transitioned.complete();
+        await releaseCompletion;
+      case GatedFailureEvent(:final entered, :final release, :final error):
+        entered.complete();
+        await release;
+        throw error;
       case NoWriteEvent(:final entered, :final release):
         entered.complete();
         await release;
@@ -356,6 +398,8 @@ final class LoggingController extends EventControllerNotifier<int, LoggingEvent>
       ThrowStateSummaryEvent() => const {'kind': 'throw-state-summary'},
       ConcurrentFirstEvent() => const {'kind': 'concurrent-first'},
       ConcurrentSecondEvent() => const {'kind': 'concurrent-second'},
+      GatedPhaseEvent(:final name) => <String, Object?>{'kind': 'gated-phase', 'name': name},
+      GatedFailureEvent() => const {'kind': 'gated-failure'},
       NoWriteEvent() => const {'kind': 'no-write'},
       ParentWithoutLaterWriteEvent() => const {'kind': 'parent-without-later-write'},
       ParentWriteAfterChildEvent() => const {'kind': 'parent-write-after-child'},
@@ -823,6 +867,198 @@ void main() {
     expect(completed.nextStateKind, AsyncValueKind.data);
     expect(completed.hasChanged, isTrue);
     expect(completed.duration, isNotNull);
+    expect(eventRecords.map((record) => record.startedAt).toSet(), hasLength(1));
+  });
+
+  test('framework lifecycle and dispatch records carry occurrence data and increasing sequences', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+
+    await container.read(loggingProvider.notifier).dispatch(const IncrementEvent());
+    container.dispose();
+
+    expect(
+      logger.records.map((record) => record.phase),
+      containsAll(<EventLogPhase>[
+        EventLogPhase.controllerCreated,
+        EventLogPhase.initialStateEstablished,
+        EventLogPhase.eventStarted,
+        EventLogPhase.transition,
+        EventLogPhase.eventCompleted,
+        EventLogPhase.controllerDisposed,
+      ]),
+    );
+    expect(
+      logger.records,
+      everyElement(isA<EventLogRecord>().having((record) => record.occurredAt.isUtc, 'UTC', isTrue)),
+    );
+    expect(
+      logger.records,
+      everyElement(isA<EventLogRecord>().having((record) => record.recordSequence, 'recordSequence', isNotNull)),
+    );
+    final sequences = logger.records.map((record) => record.recordSequence!).toList();
+    expect(sequences, orderedEquals(sequences.toList()..sort()));
+    expect(sequences.toSet(), hasLength(sequences.length));
+  });
+
+  test('interleaved dispatches across containers are reconstructable by isolate-wide sequence', () async {
+    final logger = CollectingEventLogger();
+    final firstContainer = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    final secondContainer = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(firstContainer.dispose);
+    addTearDown(secondContainer.dispose);
+    final firstController = firstContainer.read(loggingProvider.notifier);
+    final secondController = secondContainer.read(loggingProvider.notifier);
+    await Future.wait(<Future<int>>[
+      firstContainer.read(loggingProvider.future),
+      secondContainer.read(loggingProvider.future),
+    ]);
+    final firstEntered = Completer<void>();
+    final firstReleaseTransition = Completer<void>();
+    final firstTransitioned = Completer<void>();
+    final firstReleaseCompletion = Completer<void>();
+    final secondEntered = Completer<void>();
+    final secondReleaseTransition = Completer<void>();
+    final secondTransitioned = Completer<void>();
+    final secondReleaseCompletion = Completer<void>();
+
+    final firstDispatch = firstController.dispatch(
+      GatedPhaseEvent(
+        name: 'first',
+        entered: firstEntered,
+        releaseTransition: firstReleaseTransition.future,
+        transitioned: firstTransitioned,
+        releaseCompletion: firstReleaseCompletion.future,
+        value: 1,
+      ),
+    );
+    await firstEntered.future;
+    final secondDispatch = secondController.dispatch(
+      GatedPhaseEvent(
+        name: 'second',
+        entered: secondEntered,
+        releaseTransition: secondReleaseTransition.future,
+        transitioned: secondTransitioned,
+        releaseCompletion: secondReleaseCompletion.future,
+        value: 2,
+      ),
+    );
+    await secondEntered.future;
+    firstReleaseTransition.complete();
+    await firstTransitioned.future;
+    secondReleaseTransition.complete();
+    await secondTransitioned.future;
+    secondReleaseCompletion.complete();
+    await secondDispatch;
+    firstReleaseCompletion.complete();
+    await firstDispatch;
+
+    final dispatchRecords = logger.records.where((record) => record.eventName == 'GatedPhaseEvent').toList();
+    final orderedBySequence = dispatchRecords.toList()
+      ..sort((left, right) => left.recordSequence!.compareTo(right.recordSequence!));
+    expect(orderedBySequence, orderedEquals(dispatchRecords));
+    expect(orderedBySequence.map((record) => '${record.metadata['name']}:${record.phase.name}'), <String>[
+      'first:eventStarted',
+      'second:eventStarted',
+      'first:transition',
+      'second:transition',
+      'second:eventCompleted',
+      'first:eventCompleted',
+    ]);
+
+    for (final name in <String>['first', 'second']) {
+      final spanRecords = dispatchRecords.where((record) => record.metadata['name'] == name).toList();
+      expect(spanRecords.map((record) => record.startedAt).toSet(), hasLength(1));
+      expect(
+        spanRecords.map((record) => record.occurredAt),
+        orderedEquals(spanRecords.map((record) => record.occurredAt).toList()..sort()),
+      );
+      final spanSequences = spanRecords.map((record) => record.recordSequence!).toList();
+      expect(spanSequences, orderedEquals(spanSequences.toList()..sort()));
+    }
+
+    final allSequences = logger.records.map((record) => record.recordSequence!).toList();
+    expect(allSequences, orderedEquals(allSequences.toList()..sort()));
+    expect(allSequences.toSet(), hasLength(allSequences.length));
+  });
+
+  test('terminal duration covers controlled handler wait and is non-negative', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+    final entered = Completer<void>();
+    final releaseTransition = Completer<void>();
+    final transitioned = Completer<void>();
+    final releaseCompletion = Completer<void>();
+
+    final dispatch = container
+        .read(loggingProvider.notifier)
+        .dispatch(
+          GatedPhaseEvent(
+            name: 'duration',
+            entered: entered,
+            releaseTransition: releaseTransition.future,
+            transitioned: transitioned,
+            releaseCompletion: releaseCompletion.future,
+            value: 3,
+          ),
+        );
+    await entered.future;
+    final controlledWait = Stopwatch()..start();
+    releaseTransition.complete();
+    await transitioned.future;
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    controlledWait.stop();
+    releaseCompletion.complete();
+    await dispatch;
+
+    final completed = logger.records.singleWhere(
+      (record) => record.eventName == 'GatedPhaseEvent' && record.phase == EventLogPhase.eventCompleted,
+    );
+    expect(completed.duration, isNotNull);
+    expect(completed.duration!.isNegative, isFalse);
+    expect(completed.duration, greaterThanOrEqualTo(controlledWait.elapsed));
+  });
+
+  test('failed dispatch records terminal occurrence, sequence, elapsed duration, and original stack', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+    final entered = Completer<void>();
+    final release = Completer<void>();
+    final originalError = StateError('gated failure');
+    Object? caughtError;
+    StackTrace? caughtStackTrace;
+
+    final dispatch = container
+        .read(loggingProvider.notifier)
+        .dispatch(GatedFailureEvent(entered: entered, release: release.future, error: originalError));
+    await entered.future;
+    final controlledWait = Stopwatch()..start();
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    controlledWait.stop();
+    release.complete();
+    try {
+      await dispatch;
+    } catch (error, stackTrace) {
+      caughtError = error;
+      caughtStackTrace = stackTrace;
+    }
+
+    final records = logger.records.where((record) => record.eventName == 'GatedFailureEvent').toList();
+    final failed = records.singleWhere((record) => record.phase == EventLogPhase.eventFailed);
+    expect(caughtError, same(originalError));
+    expect(failed.error, same(originalError));
+    expect(failed.stackTrace.toString(), caughtStackTrace.toString());
+    expect(failed.occurredAt.isUtc, isTrue);
+    expect(failed.recordSequence, isNotNull);
+    expect(failed.duration, isNotNull);
+    expect(failed.duration!.isNegative, isFalse);
+    expect(failed.duration, greaterThanOrEqualTo(controlledWait.elapsed));
+    expect(
+      records.map((record) => record.recordSequence!),
+      orderedEquals(records.map((record) => record.recordSequence!).toList()..sort()),
+    );
   });
 
   test('logs controller lifecycle without event payloads', () async {
@@ -1448,6 +1684,7 @@ void main() {
     );
 
     expect(record.occurredAt, startedAt);
+    expect(record.recordSequence, isNull);
   });
 
   test('EventLogRecord preserves an explicit occurredAt', () {
