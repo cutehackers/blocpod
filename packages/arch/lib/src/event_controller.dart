@@ -17,6 +17,7 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
   final Object _dispatchOwner = Object();
   final Map<EventDispatchContext, _DispatchObservation<S>> _activeObservations = Map.identity();
 
+  int _nextOwnedWriteOrdinal = 0;
   bool _didLogControllerCreated = false;
   bool _didLogInitialStateEstablished = false;
   bool _didRegisterControllerDisposed = false;
@@ -59,7 +60,8 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
     if (observation == null) {
       return;
     }
-    observation.recordOwnedState(next);
+    _nextOwnedWriteOrdinal += 1;
+    observation.recordOwnedState(next, writeOrdinal: _nextOwnedWriteOrdinal);
 
     if (previous != null) {
       _logTransitionSafely(dispatchContext: dispatchContext, previous: previous, next: next);
@@ -324,7 +326,10 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
       return;
     }
 
-    _activeObservations[parent]?.recordOwnedState(observation.outcome);
+    _activeObservations[parent]?.recordOwnedState(
+      observation.outcome,
+      writeOrdinal: observation.latestOwnedWriteOrdinal!,
+    );
   }
 
   void _writeRecordSafely(EventLogRecord record) {
@@ -410,12 +415,19 @@ final class _DispatchObservation<S> {
 
   final AsyncValue<S> stateAtStart;
   AsyncValue<S>? latestOwnedState;
+  int? latestOwnedWriteOrdinal;
   bool hasOwnedOutcome = false;
 
   AsyncValue<S> get outcome => latestOwnedState ?? stateAtStart;
 
-  void recordOwnedState(AsyncValue<S> next) {
+  void recordOwnedState(AsyncValue<S> next, {required int writeOrdinal}) {
+    final currentOrdinal = latestOwnedWriteOrdinal;
+    if (currentOrdinal != null && writeOrdinal <= currentOrdinal) {
+      return;
+    }
+
     latestOwnedState = next;
+    latestOwnedWriteOrdinal = writeOrdinal;
     hasOwnedOutcome = true;
   }
 }

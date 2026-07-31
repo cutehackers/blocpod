@@ -74,6 +74,42 @@ final class ParentWriteAfterChildEvent extends LoggingEvent {
   final Future<void> release;
 }
 
+final class ParentWritesWhileChildPendingEvent extends LoggingEvent {
+  const ParentWritesWhileChildPendingEvent({
+    required this.childWrote,
+    required this.parentWrote,
+    required this.releaseChild,
+  });
+
+  final Completer<void> childWrote;
+  final Completer<void> parentWrote;
+  final Future<void> releaseChild;
+}
+
+final class ReverseCompletionChildrenEvent extends LoggingEvent {
+  const ReverseCompletionChildrenEvent({
+    required this.firstWrote,
+    required this.secondWrote,
+    required this.releaseFirst,
+    required this.releaseSecond,
+    required this.secondCompleted,
+  });
+
+  final Completer<void> firstWrote;
+  final Completer<void> secondWrote;
+  final Future<void> releaseFirst;
+  final Future<void> releaseSecond;
+  final Completer<void> secondCompleted;
+}
+
+final class OrderedChildEvent extends LoggingEvent {
+  const OrderedChildEvent({required this.value, required this.wrote, required this.release});
+
+  final int value;
+  final Completer<void> wrote;
+  final Future<void> release;
+}
+
 final class CrossControllerParentEvent extends LoggingEvent {
   const CrossControllerParentEvent(this.dispatchChild);
 
@@ -137,7 +173,9 @@ final class InheritedDispatchEvent extends LoggingEvent {
 }
 
 final class RejectingStateEvent {
-  const RejectingStateEvent();
+  const RejectingStateEvent(this.value);
+
+  final int value;
 }
 
 final loggingProvider = AsyncNotifierProvider<LoggingController, int>(LoggingController.new);
@@ -233,6 +271,29 @@ final class LoggingController extends EventControllerNotifier<int, LoggingEvent>
         state = const AsyncData(10);
         wrote.complete();
         await release;
+      case ParentWritesWhileChildPendingEvent(:final childWrote, :final parentWrote, :final releaseChild):
+        final child = dispatch(OrderedChildEvent(value: 1, wrote: childWrote, release: releaseChild));
+        await childWrote.future;
+        state = const AsyncData(2);
+        parentWrote.complete();
+        await child;
+      case ReverseCompletionChildrenEvent(
+        :final firstWrote,
+        :final secondWrote,
+        :final releaseFirst,
+        :final releaseSecond,
+        :final secondCompleted,
+      ):
+        final first = dispatch(OrderedChildEvent(value: 1, wrote: firstWrote, release: releaseFirst));
+        await firstWrote.future;
+        final second = dispatch(OrderedChildEvent(value: 2, wrote: secondWrote, release: releaseSecond));
+        await secondWrote.future;
+        unawaited(second.whenComplete(secondCompleted.complete));
+        await Future.wait(<Future<void>>[first, second]);
+      case OrderedChildEvent(:final value, :final wrote, :final release):
+        state = AsyncData(value);
+        wrote.complete();
+        await release;
       case CrossControllerParentEvent(:final dispatchChild):
         await dispatchChild();
       case FireAndForgetParentEvent(:final childStarted, :final releaseChild, :final childCompleted):
@@ -298,6 +359,9 @@ final class LoggingController extends EventControllerNotifier<int, LoggingEvent>
       NoWriteEvent() => const {'kind': 'no-write'},
       ParentWithoutLaterWriteEvent() => const {'kind': 'parent-without-later-write'},
       ParentWriteAfterChildEvent() => const {'kind': 'parent-write-after-child'},
+      ParentWritesWhileChildPendingEvent() => const {'kind': 'parent-writes-while-child-pending'},
+      ReverseCompletionChildrenEvent() => const {'kind': 'reverse-completion-children'},
+      OrderedChildEvent() => const {'kind': 'ordered-child'},
       CrossControllerParentEvent() => const {'kind': 'cross-controller-parent'},
       FireAndForgetParentEvent() => const {'kind': 'fire-and-forget-parent'},
       DelayedChildEvent() => const {'kind': 'delayed-child'},
@@ -369,18 +433,34 @@ final class ExplodingEqualityController extends EventControllerNotifier<Explodin
 }
 
 final class RejectingStateController extends EventControllerNotifier<int, RejectingStateEvent> {
+  final rejection = StateError('assignment rejected');
+
   @override
   Future<int> build() async => 0;
 
   @override
   Future<void> onEvent(RejectingStateEvent event) async {
-    state = const AsyncData(1);
+    state = AsyncData(event.value);
+  }
+
+  @override
+  String eventName(RejectingStateEvent event) {
+    return event.value == 1 ? 'RejectingStateEvent' : 'RecoveryStateEvent';
+  }
+
+  @override
+  String stateLabel(AsyncValue<int> state) {
+    return switch (state) {
+      AsyncLoading<int>() => 'loading',
+      AsyncError<int>() => 'error',
+      AsyncData<int>(:final value) => 'value:$value',
+    };
   }
 
   @override
   bool updateShouldNotify(AsyncValue<int> previous, AsyncValue<int> next) {
     if (next case AsyncData<int>(value: 1)) {
-      throw StateError('assignment rejected');
+      throw rejection;
     }
     return true;
   }
@@ -893,6 +973,65 @@ void main() {
     expect(container.read(loggingProvider), isA<AsyncData<int>>().having((value) => value.value, 'value', 90));
   });
 
+  test('older child finishing after a newer parent write cannot overwrite the parent outcome', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+    final controller = container.read(loggingProvider.notifier);
+    final childWrote = Completer<void>();
+    final parentWrote = Completer<void>();
+    final releaseChild = Completer<void>();
+
+    final dispatch = controller.dispatch(
+      ParentWritesWhileChildPendingEvent(
+        childWrote: childWrote,
+        parentWrote: parentWrote,
+        releaseChild: releaseChild.future,
+      ),
+    );
+    await parentWrote.future;
+    releaseChild.complete();
+    await dispatch;
+
+    final parent = logger.records.singleWhere(
+      (record) =>
+          record.phase == EventLogPhase.eventCompleted && record.eventName == 'ParentWritesWhileChildPendingEvent',
+    );
+    expect(parent.nextStateLabel, 'value:2');
+  });
+
+  test('children completing in reverse preserve their state write order in the parent outcome', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+    final controller = container.read(loggingProvider.notifier);
+    final firstWrote = Completer<void>();
+    final secondWrote = Completer<void>();
+    final releaseFirst = Completer<void>();
+    final releaseSecond = Completer<void>();
+    final secondCompleted = Completer<void>();
+
+    final dispatch = controller.dispatch(
+      ReverseCompletionChildrenEvent(
+        firstWrote: firstWrote,
+        secondWrote: secondWrote,
+        releaseFirst: releaseFirst.future,
+        releaseSecond: releaseSecond.future,
+        secondCompleted: secondCompleted,
+      ),
+    );
+    await secondWrote.future;
+    releaseSecond.complete();
+    await secondCompleted.future;
+    releaseFirst.complete();
+    await dispatch;
+
+    final parent = logger.records.singleWhere(
+      (record) => record.phase == EventLogPhase.eventCompleted && record.eventName == 'ReverseCompletionChildrenEvent',
+    );
+    expect(parent.nextStateLabel, 'value:2');
+  });
+
   test('cross-controller child outcome does not fold into its parent', () async {
     final logger = CollectingEventLogger();
     final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
@@ -964,22 +1103,40 @@ void main() {
     expect(observedValues, <int>[1]);
   });
 
-  test('failed state assignment does not emit a successful transition', () async {
+  test('failed state assignment keeps its last successful outcome and isolates later dispatches', () async {
     final logger = CollectingEventLogger();
     final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
     addTearDown(container.dispose);
+    final controller = container.read(rejectingStateProvider.notifier);
 
-    await expectLater(
-      container.read(rejectingStateProvider.notifier).dispatch(const RejectingStateEvent()),
-      throwsA(isA<StateError>().having((error) => error.message, 'message', 'assignment rejected')),
-    );
+    await expectLater(controller.dispatch(const RejectingStateEvent(1)), throwsA(same(controller.rejection)));
 
-    expect(
-      logger.records.where(
-        (record) => record.phase == EventLogPhase.transition && record.eventName == 'RejectingStateEvent',
-      ),
-      isEmpty,
-    );
+    final failedRecords = logger.records.where((record) => record.eventName == 'RejectingStateEvent').toList();
+    expect(failedRecords.map((record) => record.phase), <EventLogPhase>[
+      EventLogPhase.eventStarted,
+      EventLogPhase.eventFailed,
+    ]);
+    final failed = failedRecords.last;
+    expect(failed.previousStateLabel, 'value:0');
+    expect(failed.nextStateLabel, 'value:0');
+    expect(failed.hasChanged, isFalse);
+    expect(failed.error, same(controller.rejection));
+    expect(failed.stackTrace, isNotNull);
+    expect(container.read(rejectingStateProvider), isA<AsyncData<int>>().having((value) => value.value, 'value', 1));
+
+    await controller.dispatch(const RejectingStateEvent(2));
+
+    final recoveryRecords = logger.records.where((record) => record.eventName == 'RecoveryStateEvent').toList();
+    expect(recoveryRecords.map((record) => record.phase), <EventLogPhase>[
+      EventLogPhase.eventStarted,
+      EventLogPhase.transition,
+      EventLogPhase.eventCompleted,
+    ]);
+    final recovery = recoveryRecords.last;
+    expect(recovery.previousStateLabel, 'value:1');
+    expect(recovery.nextStateLabel, 'value:2');
+    expect(recovery.error, isNull);
+    expect(container.read(rejectingStateProvider), isA<AsyncData<int>>().having((value) => value.value, 'value', 2));
   });
 
   test('state writes are attributed only to their owning controller instance', () async {
