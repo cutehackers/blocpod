@@ -65,6 +65,25 @@ final class EventDispatchContext {
   /// Whether the zone contains an active or closed dispatch context.
   static bool get hasAmbientContext => _ambientContext != null;
 
+  /// Trace context to use as the parent of a new dispatch.
+  ///
+  /// A trace inherited only from a closed dispatch is stale. A different trace
+  /// explicitly installed inside that stale zone remains a valid parent.
+  static TraceContext? get parentTraceContext {
+    final ambientContext = _ambientContext;
+    final currentTraceContext = TraceContext.current;
+    if (ambientContext == null) {
+      return currentTraceContext;
+    }
+    if (ambientContext.isActive) {
+      return ambientContext.traceContext;
+    }
+    if (identical(currentTraceContext, ambientContext.traceContext)) {
+      return null;
+    }
+    return currentTraceContext;
+  }
+
   /// Runs [body] with [context] and its trace context available in the zone.
   static R run<R>(EventDispatchContext context, R Function() body) {
     return TraceContext.run(
@@ -86,5 +105,12 @@ final class EventDispatchContext {
   int nextTransitionIndex() {
     _transitionIndex += 1;
     return _transitionIndex;
+  }
+
+  /// Cancels the latest reserved transition index.
+  void cancelTransitionIndex(int transitionIndex) {
+    if (_transitionIndex == transitionIndex) {
+      _transitionIndex -= 1;
+    }
   }
 }

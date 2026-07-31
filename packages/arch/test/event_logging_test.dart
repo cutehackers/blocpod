@@ -1152,6 +1152,37 @@ void main() {
     expect(secondCompleted.nextStateLabel, 'value:200');
   });
 
+  test('reentrant listener writes preserve commit order and terminal outcome', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+    final controller = container.read(loggingProvider.notifier);
+    await container.read(loggingProvider.future);
+
+    final subscription = container.listen(loggingProvider, (previous, next) {
+      if (next.value == 1) {
+        controller.setDirectly(2);
+      }
+    });
+    addTearDown(subscription.close);
+
+    await controller.dispatch(const IncrementEvent());
+
+    final transitions = logger.records
+        .where((record) => record.phase == EventLogPhase.transition && record.eventName == 'IncrementEvent')
+        .toList();
+    final completed = logger.records.singleWhere(
+      (record) => record.phase == EventLogPhase.eventCompleted && record.eventName == 'IncrementEvent',
+    );
+
+    expect(
+      transitions.map((record) => (record.previousStateLabel, record.nextStateLabel, record.transitionIndex)).toList(),
+      <(String?, String?, int?)>[('value:0', 'value:1', 1), ('value:1', 'value:2', 2)],
+    );
+    expect(completed.nextStateLabel, 'value:2');
+    expect(container.read(loggingProvider).value, 2);
+  });
+
   test('dispatch without owned writes completes with its admission state', () async {
     final logger = CollectingEventLogger();
     final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
@@ -1617,6 +1648,32 @@ void main() {
     );
     expect(child.traceContext.traceId, explicitParent.traceId);
     expect(child.traceContext.parentSpanId, explicitParent.spanId);
+  });
+
+  test('explicit trace context overrides a closed inherited dispatch context', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+    final controller = container.read(loggingProvider.notifier);
+    final trigger = Completer<void>();
+    final completed = Completer<void>();
+    final explicitParent = TraceContext.root(startedAt: DateTime.utc(2026, 7, 31));
+
+    await controller.dispatch(
+      InheritedDispatchEvent(
+        trigger: trigger.future,
+        dispatch: () => TraceContext.run(explicitParent, () => controller.dispatch(const IncrementEvent())),
+        completed: completed,
+      ),
+    );
+    trigger.complete();
+    await completed.future;
+
+    final laterDispatch = logger.records.singleWhere(
+      (record) => record.eventName == 'IncrementEvent' && record.phase == EventLogPhase.eventCompleted,
+    );
+    expect(laterDispatch.traceContext.traceId, explicitParent.traceId);
+    expect(laterDispatch.traceContext.parentSpanId, explicitParent.spanId);
   });
 
   test('metadata failures do not break successful dispatches', () async {

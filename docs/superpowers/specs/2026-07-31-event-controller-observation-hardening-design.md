@@ -88,6 +88,7 @@ void close();
 
 static EventDispatchContext? currentFor(Object owner);
 static bool get hasAmbientContext;
+static TraceContext? get parentTraceContext;
 static R runWithoutContext<R>(R Function() body);
 ```
 
@@ -116,17 +117,16 @@ state setter는 `EventDispatchContext.current`가 아니라
 새 dispatch의 parent trace는 다음 규칙으로 선택한다.
 
 ```dart
-final activeParent = EventDispatchContext.current;
-final parentTrace = EventDispatchContext.hasAmbientContext
-    ? activeParent?.traceContext
-    : TraceContext.current;
+final parentTrace = EventDispatchContext.parentTraceContext;
 ```
 
 - active dispatch context가 있으면 해당 span의 child를 만든다.
 - dispatch context가 전혀 없는 Zone에서는 기존처럼 명시적 `TraceContext.current`를
   존중한다.
-- closed dispatch context가 남은 stale Zone에서는 `hasAmbientContext == true`이지만
-  `current == null`이므로 parent trace를 사용하지 않고 root span을 만든다.
+- closed dispatch context가 남은 stale Zone에서 현재 trace가 그 context의 trace와
+  동일하면 상속된 trace를 버리고 root span을 만든다.
+- stale Zone 안에서 `TraceContext.run`으로 다른 trace를 명시적으로 설치했다면 해당
+  trace를 존중해 child span을 만든다.
 
 따라서 detached callback이 종료된 dispatch의 `TraceContext`만 상속하고 있더라도 새
 dispatch가 완료된 span의 child로 잘못 연결되지 않는다.
@@ -180,11 +180,15 @@ child로 취급한다. 이 제한은 API 문서에 명시한다.
 변경한다.
 
 1. 현재 state를 안전하게 읽는다.
-2. `super.state = next`로 상태 변경을 완료한다.
-3. active owned observation과 transition index를 갱신한다.
-4. transition occurrence를 만들고 logger emission queue에 넣는다.
+2. write ordinal, transition index, transition occurrence를 예약한다.
+3. `super.state = next`로 상태 변경을 완료한다.
+4. active owned observation을 예약한 write ordinal로 갱신한다.
+5. 예약한 transition을 logger emission queue에 publish한다.
 
 `super.state`가 실패하면 transition은 기록하지 않고 원래 오류를 그대로 전파한다.
+이 경우 transition occurrence와 최신 transition-index 예약을 취소한다. 예약을 상태
+커밋보다 먼저 수행하므로 Riverpod listener가 setter 안에서 같은 notifier를 동기적으로
+다시 변경해도 바깥 write가 먼저, 재진입 write가 나중 순서로 기록된다.
 logger는 반쯤 반영된 상태를 관찰할 수 없다.
 
 state summary hook과 metadata hook 실패는 기존처럼 안전한 fallback을 사용한다.
@@ -426,11 +430,15 @@ event-local observation으로 해결하며, 명시적 scope는 별도 요구가 
 13. closed dispatch Zone을 상속한 detached callback의 dispatch는 새 root span이다.
 14. dispatch context 없이 명시적으로 설정한 `TraceContext`에서는 기존 child-span
     동작을 유지한다.
-15. 한 dispatch의 모든 record는 같은 `startedAt`을 갖고 서로 다른 phase별
+15. closed dispatch Zone 안에서 명시적으로 새 `TraceContext`를 설정하면 해당
+    trace의 child-span 동작을 유지한다.
+16. 동기 listener가 같은 notifier state를 재진입 변경해도 transition과 terminal
+    outcome은 실제 커밋 순서를 유지한다.
+17. 한 dispatch의 모든 record는 같은 `startedAt`을 갖고 서로 다른 phase별
     `occurredAt`을 가질 수 있다.
-16. Blocpod 생성 record의 `recordSequence`는 isolate 안에서 엄격히 증가한다.
-17. handler failure는 event-local failure record를 만들고 원래 error/stack을 보존한다.
-18. 기존 lifecycle, metadata snapshot, nested trace 테스트는 그대로 통과한다.
+18. Blocpod 생성 record의 `recordSequence`는 isolate 안에서 엄격히 증가한다.
+19. handler failure는 event-local failure record를 만들고 원래 error/stack을 보존한다.
+20. 기존 lifecycle, metadata snapshot, nested trace 테스트는 그대로 통과한다.
 
 `blocpod_arch_logger`:
 

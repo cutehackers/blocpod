@@ -58,20 +58,43 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
     }
 
     final observation = _activeObservations[dispatchContext];
-
-    super.state = next;
-
     if (observation == null) {
+      super.state = next;
       return;
     }
-    _nextOwnedWriteOrdinal += 1;
-    observation.recordOwnedState(next, writeOrdinal: _nextOwnedWriteOrdinal);
 
+    _nextOwnedWriteOrdinal += 1;
+    final writeOrdinal = _nextOwnedWriteOrdinal;
+    final transitionIndex = previous == null
+        ? null
+        : dispatchContext.nextTransitionIndex();
+    ObservationOccurrence? occurrence;
     if (previous != null) {
-      final occurrence = ObservationRuntime.capture();
+      try {
+        occurrence = ObservationRuntime.capture();
+      } catch (_) {
+        // Observation allocation must not affect the state assignment.
+      }
+    }
+
+    try {
+      super.state = next;
+    } catch (_) {
+      if (occurrence != null) {
+        ObservationRuntime.cancel(occurrence);
+      }
+      if (transitionIndex != null) {
+        dispatchContext.cancelTransitionIndex(transitionIndex);
+      }
+      rethrow;
+    }
+    observation.recordOwnedState(next, writeOrdinal: writeOrdinal);
+
+    if (previous != null && occurrence != null && transitionIndex != null) {
       _logTransitionSafely(
         dispatchContext: dispatchContext,
         occurrence: occurrence,
+        transitionIndex: transitionIndex,
         previous: previous,
         next: next,
       );
@@ -89,9 +112,7 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
     final safeEventName = _safeEventName(event);
     final safeMetadata = _safeDispatchMetadataFor(event);
     final parentDispatchContext = EventDispatchContext.current;
-    final parentTraceContext = EventDispatchContext.hasAmbientContext
-        ? parentDispatchContext?.traceContext
-        : TraceContext.current;
+    final parentTraceContext = EventDispatchContext.parentTraceContext;
     final traceContext = parentTraceContext == null
         ? TraceContext.root(startedAt: startedAt)
         : parentTraceContext.child(startedAt: startedAt);
@@ -300,6 +321,7 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
   void _logTransitionSafely({
     required EventDispatchContext dispatchContext,
     required ObservationOccurrence occurrence,
+    required int transitionIndex,
     required AsyncValue<S> previous,
     required AsyncValue<S> next,
   }) {
@@ -312,7 +334,7 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
         startedAt: dispatchContext.startedAt,
         occurredAt: occurrence.occurredAt,
         recordSequence: occurrence.recordSequence,
-        transitionIndex: dispatchContext.nextTransitionIndex(),
+        transitionIndex: transitionIndex,
         previousStateKind: asyncValueKindOf(previous),
         nextStateKind: asyncValueKindOf(next),
         hasChanged: !identical(previous, next),
