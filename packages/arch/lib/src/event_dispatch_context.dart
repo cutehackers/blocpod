@@ -76,7 +76,7 @@ final class EventDispatchContext {
 
   /// Runs [body] with dispatch and trace contexts masked from the zone.
   static R runWithoutContext<R>(R Function() body) {
-    return TraceContext.runWithoutContext(
+    return runWithoutTraceContext(
       body,
       zoneValues: {_eventDispatchContextZoneKey: null},
     );

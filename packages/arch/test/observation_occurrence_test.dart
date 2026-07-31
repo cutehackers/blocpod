@@ -8,5 +8,8 @@ void main() {
 
     expect(first.recordSequence, 1);
     expect(second.recordSequence, 2);
+
+    ObservationRuntime.cancel(first);
+    ObservationRuntime.cancel(second);
   });
 }

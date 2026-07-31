@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
 - Formatter timestamps now use `EventLogRecord.occurredAt`, and structured
   metadata includes the reserved `recordSequence` occurrence order when

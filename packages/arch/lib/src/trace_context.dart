@@ -55,17 +55,6 @@ final class TraceContext {
     );
   }
 
-  /// Runs [body] with the trace context masked from the zone.
-  static R runWithoutContext<R>(
-    R Function() body, {
-    Map<Object?, Object?> zoneValues = const {},
-  }) {
-    return runZoned(
-      body,
-      zoneValues: <Object?, Object?>{...zoneValues, _traceContextZoneKey: null},
-    );
-  }
-
   /// Creates a child span in this trace.
   TraceContext child({DateTime? startedAt}) {
     return TraceContext._(
@@ -106,4 +95,14 @@ final class TraceContext {
 
     return '$objectEntropy$randomEntropy';
   }
+}
+
+R runWithoutTraceContext<R>(
+  R Function() body, {
+  Map<Object?, Object?> zoneValues = const {},
+}) {
+  return runZoned(
+    body,
+    zoneValues: <Object?, Object?>{...zoneValues, _traceContextZoneKey: null},
+  );
 }

@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
 - Added `occurredAt` and isolate-local `recordSequence` observation fields while
   keeping `startedAt` as span start and measuring dispatch duration

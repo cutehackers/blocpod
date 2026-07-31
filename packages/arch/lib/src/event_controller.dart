@@ -61,9 +61,6 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
 
     super.state = next;
 
-    final occurrence = previous != null && observation != null
-        ? ObservationRuntime.capture()
-        : null;
     if (observation == null) {
       return;
     }
@@ -71,9 +68,10 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
     observation.recordOwnedState(next, writeOrdinal: _nextOwnedWriteOrdinal);
 
     if (previous != null) {
+      final occurrence = ObservationRuntime.capture();
       _logTransitionSafely(
         dispatchContext: dispatchContext,
-        occurrence: occurrence!,
+        occurrence: occurrence,
         previous: previous,
         next: next,
       );
@@ -125,18 +123,23 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
       dispatchContext.close();
       dispatchStopwatch.stop();
       final terminalOccurrence = ObservationRuntime.capture();
-      final outcome = observation.outcome;
-      _foldOwnedOutcomeIntoParent(dispatchContext, observation);
-      _activeObservations.remove(dispatchContext);
-      _logEventFinishedSafely(
-        dispatchContext: dispatchContext,
-        occurrence: terminalOccurrence,
-        duration: dispatchStopwatch.elapsed,
-        stateAtStart: observation.stateAtStart,
-        outcome: outcome,
-        error: error,
-        stackTrace: stackTrace,
-      );
+      try {
+        final outcome = observation.outcome;
+        _foldOwnedOutcomeIntoParent(dispatchContext, observation);
+        _activeObservations.remove(dispatchContext);
+        _logEventFinishedSafely(
+          dispatchContext: dispatchContext,
+          occurrence: terminalOccurrence,
+          duration: dispatchStopwatch.elapsed,
+          stateAtStart: observation.stateAtStart,
+          outcome: outcome,
+          error: error,
+          stackTrace: stackTrace,
+        );
+      } catch (_) {
+        ObservationRuntime.cancel(terminalOccurrence);
+        rethrow;
+      }
     }
   }
 
@@ -194,19 +197,18 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
     _didLogControllerCreated = true;
 
     final occurrence = ObservationRuntime.capture();
-    final startedAt = occurrence.occurredAt;
-    final traceContext = TraceContext.root(startedAt: startedAt);
-    _writeRecordSafely(
-      EventLogRecord(
+    _publishRecordSafely(occurrence, () {
+      final startedAt = occurrence.occurredAt;
+      return EventLogRecord(
         phase: EventLogPhase.controllerCreated,
-        traceContext: traceContext,
+        traceContext: TraceContext.root(startedAt: startedAt),
         controllerName: _safeControllerName(),
         startedAt: startedAt,
         occurredAt: occurrence.occurredAt,
         recordSequence: occurrence.recordSequence,
         metadata: _safeControllerMetadata(),
-      ),
-    );
+      );
+    });
   }
 
   void _logInitialStateEstablishedOnce() {
@@ -225,12 +227,11 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
         _ => (null, null),
       };
       final occurrence = ObservationRuntime.capture();
-      final startedAt = occurrence.occurredAt;
-      final traceContext = TraceContext.root(startedAt: startedAt);
-      _writeRecordSafely(
-        EventLogRecord(
+      _publishRecordSafely(occurrence, () {
+        final startedAt = occurrence.occurredAt;
+        return EventLogRecord(
           phase: EventLogPhase.initialStateEstablished,
-          traceContext: traceContext,
+          traceContext: TraceContext.root(startedAt: startedAt),
           controllerName: _safeControllerName(),
           startedAt: startedAt,
           occurredAt: occurrence.occurredAt,
@@ -244,8 +245,8 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
           error: error,
           stackTrace: stackTrace,
           metadata: _safeControllerMetadata(),
-        ),
-      );
+        );
+      });
     } catch (_) {
       // Logging must never affect application flow.
     }
@@ -260,20 +261,18 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
     final logger = _readLoggerSafely();
     ref.onDispose(() {
       final occurrence = ObservationRuntime.capture();
-      final startedAt = occurrence.occurredAt;
-      final traceContext = TraceContext.root(startedAt: startedAt);
-      _writeRecordToLoggerSafely(
-        logger,
-        EventLogRecord(
+      _publishRecordToLoggerSafely(occurrence, logger, () {
+        final startedAt = occurrence.occurredAt;
+        return EventLogRecord(
           phase: EventLogPhase.controllerDisposed,
-          traceContext: traceContext,
+          traceContext: TraceContext.root(startedAt: startedAt),
           controllerName: _safeControllerName(),
           startedAt: startedAt,
           occurredAt: occurrence.occurredAt,
           recordSequence: occurrence.recordSequence,
           metadata: _safeControllerMetadata(),
-        ),
-      );
+        );
+      });
     });
   }
 
@@ -282,8 +281,8 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
     required AsyncValue<S> before,
   }) {
     final occurrence = ObservationRuntime.capture();
-    _writeRecordSafely(
-      EventLogRecord(
+    _publishRecordSafely(occurrence, () {
+      return EventLogRecord(
         phase: EventLogPhase.eventStarted,
         traceContext: dispatchContext.traceContext,
         controllerName: dispatchContext.controllerName,
@@ -294,8 +293,8 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
         previousStateKind: asyncValueKindOf(before),
         previousStateLabel: _safeStateLabel(before),
         metadata: dispatchContext.metadata,
-      ),
-    );
+      );
+    });
   }
 
   void _logTransitionSafely({
@@ -304,8 +303,8 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
     required AsyncValue<S> previous,
     required AsyncValue<S> next,
   }) {
-    _writeRecordSafely(
-      EventLogRecord(
+    _publishRecordSafely(occurrence, () {
+      return EventLogRecord(
         phase: EventLogPhase.transition,
         traceContext: dispatchContext.traceContext,
         controllerName: dispatchContext.controllerName,
@@ -321,8 +320,8 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
         nextStateLabel: _safeStateLabel(next),
         stateMetadata: _safeStateMetadata(previous: previous, next: next),
         metadata: dispatchContext.metadata,
-      ),
-    );
+      );
+    });
   }
 
   void _logEventFinishedSafely({
@@ -334,36 +333,32 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
     required Object? error,
     required StackTrace? stackTrace,
   }) {
-    try {
-      _writeRecordSafely(
-        EventLogRecord(
-          phase: error == null
-              ? EventLogPhase.eventCompleted
-              : EventLogPhase.eventFailed,
-          traceContext: dispatchContext.traceContext,
-          controllerName: dispatchContext.controllerName,
-          eventName: dispatchContext.eventName,
-          startedAt: dispatchContext.startedAt,
-          occurredAt: occurrence.occurredAt,
-          recordSequence: occurrence.recordSequence,
-          duration: duration,
-          previousStateKind: asyncValueKindOf(stateAtStart),
-          nextStateKind: asyncValueKindOf(outcome),
-          hasChanged: !identical(stateAtStart, outcome),
-          previousStateLabel: _safeStateLabel(stateAtStart),
-          nextStateLabel: _safeStateLabel(outcome),
-          stateMetadata: _safeStateMetadata(
-            previous: stateAtStart,
-            next: outcome,
-          ),
-          error: error,
-          stackTrace: stackTrace,
-          metadata: dispatchContext.metadata,
+    _publishRecordSafely(occurrence, () {
+      return EventLogRecord(
+        phase: error == null
+            ? EventLogPhase.eventCompleted
+            : EventLogPhase.eventFailed,
+        traceContext: dispatchContext.traceContext,
+        controllerName: dispatchContext.controllerName,
+        eventName: dispatchContext.eventName,
+        startedAt: dispatchContext.startedAt,
+        occurredAt: occurrence.occurredAt,
+        recordSequence: occurrence.recordSequence,
+        duration: duration,
+        previousStateKind: asyncValueKindOf(stateAtStart),
+        nextStateKind: asyncValueKindOf(outcome),
+        hasChanged: !identical(stateAtStart, outcome),
+        previousStateLabel: _safeStateLabel(stateAtStart),
+        nextStateLabel: _safeStateLabel(outcome),
+        stateMetadata: _safeStateMetadata(
+          previous: stateAtStart,
+          next: outcome,
         ),
+        error: error,
+        stackTrace: stackTrace,
+        metadata: dispatchContext.metadata,
       );
-    } catch (_) {
-      // Logging must never affect application flow.
-    }
+    });
   }
 
   void _foldOwnedOutcomeIntoParent(
@@ -385,9 +380,17 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
     );
   }
 
-  void _writeRecordSafely(EventLogRecord record) {
-    final logger = _readLoggerSafely();
-    _writeRecordToLoggerSafely(logger, record);
+  void _publishRecordSafely(
+    ObservationOccurrence occurrence,
+    EventLogRecord Function() buildRecord,
+  ) {
+    try {
+      final record = buildRecord();
+      final logger = _readLoggerSafely();
+      ObservationRuntime.publish(occurrence, logger, record);
+    } catch (_) {
+      ObservationRuntime.cancel(occurrence);
+    }
   }
 
   EventLogger? _readLoggerSafely() {
@@ -398,12 +401,17 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
     }
   }
 
-  void _writeRecordToLoggerSafely(EventLogger? logger, EventLogRecord record) {
-    if (logger == null) {
-      return;
+  void _publishRecordToLoggerSafely(
+    ObservationOccurrence occurrence,
+    EventLogger? logger,
+    EventLogRecord Function() buildRecord,
+  ) {
+    try {
+      final record = buildRecord();
+      ObservationRuntime.publish(occurrence, logger, record);
+    } catch (_) {
+      ObservationRuntime.cancel(occurrence);
     }
-
-    ObservationRuntime.emit(logger, record);
   }
 
   String _safeControllerName() {
