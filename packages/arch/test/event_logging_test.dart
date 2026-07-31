@@ -53,6 +53,68 @@ final class ConcurrentSecondEvent extends LoggingEvent {
   const ConcurrentSecondEvent();
 }
 
+final class NoWriteEvent extends LoggingEvent {
+  const NoWriteEvent({required this.entered, required this.release});
+
+  final Completer<void> entered;
+  final Future<void> release;
+}
+
+final class ParentWithoutLaterWriteEvent extends LoggingEvent {
+  const ParentWithoutLaterWriteEvent({required this.childSettled, required this.release});
+
+  final Completer<void> childSettled;
+  final Future<void> release;
+}
+
+final class ParentWriteAfterChildEvent extends LoggingEvent {
+  const ParentWriteAfterChildEvent({required this.wrote, required this.release});
+
+  final Completer<void> wrote;
+  final Future<void> release;
+}
+
+final class CrossControllerParentEvent extends LoggingEvent {
+  const CrossControllerParentEvent(this.dispatchChild);
+
+  final Future<void> Function() dispatchChild;
+}
+
+final class FireAndForgetParentEvent extends LoggingEvent {
+  const FireAndForgetParentEvent({
+    required this.childStarted,
+    required this.releaseChild,
+    required this.childCompleted,
+  });
+
+  final Completer<void> childStarted;
+  final Future<void> releaseChild;
+  final Completer<void> childCompleted;
+}
+
+final class DelayedChildEvent extends LoggingEvent {
+  const DelayedChildEvent({required this.started, required this.release});
+
+  final Completer<void> started;
+  final Future<void> release;
+}
+
+final class ThrowOwnedOutcomeEvent extends LoggingEvent {
+  const ThrowOwnedOutcomeEvent({required this.afterWrite, required this.release, required this.error});
+
+  final Completer<void> afterWrite;
+  final Future<void> release;
+  final StateError error;
+}
+
+final class InheritedWriteThenThrowEvent extends LoggingEvent {
+  const InheritedWriteThenThrowEvent({required this.trigger, required this.completed, required this.error});
+
+  final Future<void> trigger;
+  final Completer<void> completed;
+  final StateError error;
+}
+
 final class DirectWriteEvent extends LoggingEvent {
   const DirectWriteEvent(this.write);
 
@@ -74,9 +136,15 @@ final class InheritedDispatchEvent extends LoggingEvent {
   final Completer<void> completed;
 }
 
+final class RejectingStateEvent {
+  const RejectingStateEvent();
+}
+
 final loggingProvider = AsyncNotifierProvider<LoggingController, int>(LoggingController.new);
 
 final otherLoggingProvider = AsyncNotifierProvider<LoggingController, int>(LoggingController.new);
+
+final rejectingStateProvider = AsyncNotifierProvider<RejectingStateController, int>(RejectingStateController.new);
 
 final explodingEqualityProvider = AsyncNotifierProvider<ExplodingEqualityController, ExplodingEquality>(
   ExplodingEqualityController.new,
@@ -153,6 +221,44 @@ final class LoggingController extends EventControllerNotifier<int, LoggingEvent>
       case ConcurrentSecondEvent():
         state = const AsyncData(200);
         await Future<void>.delayed(Duration.zero);
+      case NoWriteEvent(:final entered, :final release):
+        entered.complete();
+        await release;
+      case ParentWithoutLaterWriteEvent(:final childSettled, :final release):
+        await dispatch(const ChildEvent());
+        childSettled.complete();
+        await release;
+      case ParentWriteAfterChildEvent(:final wrote, :final release):
+        await dispatch(const ChildEvent());
+        state = const AsyncData(10);
+        wrote.complete();
+        await release;
+      case CrossControllerParentEvent(:final dispatchChild):
+        await dispatchChild();
+      case FireAndForgetParentEvent(:final childStarted, :final releaseChild, :final childCompleted):
+        unawaited(
+          dispatch(
+            DelayedChildEvent(started: childStarted, release: releaseChild),
+          ).whenComplete(childCompleted.complete),
+        );
+        await childStarted.future;
+      case DelayedChildEvent(:final started, :final release):
+        started.complete();
+        await release;
+        state = const AsyncData(70);
+      case ThrowOwnedOutcomeEvent(:final afterWrite, :final release, :final error):
+        state = const AsyncData(30);
+        afterWrite.complete();
+        await release;
+        throw error;
+      case InheritedWriteThenThrowEvent(:final trigger, :final completed, :final error):
+        unawaited(
+          trigger.then((_) {
+            state = const AsyncData(88);
+            completed.complete();
+          }),
+        );
+        throw error;
       case DirectWriteEvent(:final write):
         write();
       case InheritedWriteEvent(:final trigger, :final completed):
@@ -189,6 +295,14 @@ final class LoggingController extends EventControllerNotifier<int, LoggingEvent>
       ThrowStateSummaryEvent() => const {'kind': 'throw-state-summary'},
       ConcurrentFirstEvent() => const {'kind': 'concurrent-first'},
       ConcurrentSecondEvent() => const {'kind': 'concurrent-second'},
+      NoWriteEvent() => const {'kind': 'no-write'},
+      ParentWithoutLaterWriteEvent() => const {'kind': 'parent-without-later-write'},
+      ParentWriteAfterChildEvent() => const {'kind': 'parent-write-after-child'},
+      CrossControllerParentEvent() => const {'kind': 'cross-controller-parent'},
+      FireAndForgetParentEvent() => const {'kind': 'fire-and-forget-parent'},
+      DelayedChildEvent() => const {'kind': 'delayed-child'},
+      ThrowOwnedOutcomeEvent() => const {'kind': 'throw-owned-outcome'},
+      InheritedWriteThenThrowEvent() => const {'kind': 'inherited-write-then-throw'},
       DirectWriteEvent() => const {'kind': 'direct-write'},
       InheritedWriteEvent() => const {'kind': 'inherited-write'},
       InheritedDispatchEvent() => const {'kind': 'inherited-dispatch'},
@@ -251,6 +365,24 @@ final class ExplodingEqualityController extends EventControllerNotifier<Explodin
   @override
   bool updateShouldNotify(AsyncValue<ExplodingEquality> previous, AsyncValue<ExplodingEquality> next) {
     return !identical(previous, next);
+  }
+}
+
+final class RejectingStateController extends EventControllerNotifier<int, RejectingStateEvent> {
+  @override
+  Future<int> build() async => 0;
+
+  @override
+  Future<void> onEvent(RejectingStateEvent event) async {
+    state = const AsyncData(1);
+  }
+
+  @override
+  bool updateShouldNotify(AsyncValue<int> previous, AsyncValue<int> next) {
+    if (next case AsyncData<int>(value: 1)) {
+      throw StateError('assignment rejected');
+    }
+    return true;
   }
 }
 
@@ -348,6 +480,17 @@ final class ThrowingEventLogger implements EventLogger {
   @override
   void log(EventLogRecord record) {
     throw StateError('logger failed');
+  }
+}
+
+final class CallbackEventLogger implements EventLogger {
+  CallbackEventLogger(this.onRecord);
+
+  final void Function(EventLogRecord record) onRecord;
+
+  @override
+  void log(EventLogRecord record) {
+    onRecord(record);
   }
 }
 
@@ -659,6 +802,186 @@ void main() {
     expect(firstTransitions.single.traceContext.traceId, isNot(secondTransitions.single.traceContext.traceId));
   });
 
+  test('concurrent dispatch terminal records keep each event owned outcome', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+
+    await Future.wait(<Future<void>>[
+      container.read(loggingProvider.notifier).dispatch(const ConcurrentFirstEvent()),
+      container.read(loggingProvider.notifier).dispatch(const ConcurrentSecondEvent()),
+    ]);
+
+    final firstCompleted = logger.records.singleWhere(
+      (record) => record.phase == EventLogPhase.eventCompleted && record.eventName == 'ConcurrentFirstEvent',
+    );
+    final secondCompleted = logger.records.singleWhere(
+      (record) => record.phase == EventLogPhase.eventCompleted && record.eventName == 'ConcurrentSecondEvent',
+    );
+    expect(firstCompleted.nextStateLabel, 'value:100');
+    expect(secondCompleted.nextStateLabel, 'value:200');
+  });
+
+  test('dispatch without owned writes completes with its admission state', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+    final controller = container.read(loggingProvider.notifier);
+    final entered = Completer<void>();
+    final release = Completer<void>();
+
+    final dispatch = controller.dispatch(NoWriteEvent(entered: entered, release: release.future));
+    await entered.future;
+    controller.setDirectly(41);
+    release.complete();
+    await dispatch;
+
+    final completed = logger.records.singleWhere(
+      (record) => record.phase == EventLogPhase.eventCompleted && record.eventName == 'NoWriteEvent',
+    );
+    expect(completed.previousStateLabel, 'value:0');
+    expect(completed.nextStateLabel, 'value:0');
+    expect(completed.hasChanged, isFalse);
+    expect(container.read(loggingProvider), isA<AsyncData<int>>().having((value) => value.value, 'value', 41));
+  });
+
+  test('awaited same-controller child outcome folds into its active parent', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+    final controller = container.read(loggingProvider.notifier);
+    final childSettled = Completer<void>();
+    final release = Completer<void>();
+
+    final dispatch = controller.dispatch(
+      ParentWithoutLaterWriteEvent(childSettled: childSettled, release: release.future),
+    );
+    await childSettled.future;
+    controller.setDirectly(90);
+    release.complete();
+    await dispatch;
+
+    final parent = logger.records.singleWhere(
+      (record) => record.phase == EventLogPhase.eventCompleted && record.eventName == 'ParentWithoutLaterWriteEvent',
+    );
+    final child = logger.records.singleWhere(
+      (record) => record.phase == EventLogPhase.eventCompleted && record.eventName == 'ChildEvent',
+    );
+    expect(child.nextStateLabel, 'value:5');
+    expect(parent.nextStateLabel, 'value:5');
+    expect(container.read(loggingProvider), isA<AsyncData<int>>().having((value) => value.value, 'value', 90));
+  });
+
+  test('parent write after awaited child overrides the folded child outcome', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+    final controller = container.read(loggingProvider.notifier);
+    final wrote = Completer<void>();
+    final release = Completer<void>();
+
+    final dispatch = controller.dispatch(ParentWriteAfterChildEvent(wrote: wrote, release: release.future));
+    await wrote.future;
+    controller.setDirectly(90);
+    release.complete();
+    await dispatch;
+
+    final parent = logger.records.singleWhere(
+      (record) => record.phase == EventLogPhase.eventCompleted && record.eventName == 'ParentWriteAfterChildEvent',
+    );
+    expect(parent.nextStateLabel, 'value:10');
+    expect(container.read(loggingProvider), isA<AsyncData<int>>().having((value) => value.value, 'value', 90));
+  });
+
+  test('cross-controller child outcome does not fold into its parent', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+    final parentController = container.read(loggingProvider.notifier);
+    final childController = container.read(otherLoggingProvider.notifier);
+    await Future.wait(<Future<int>>[
+      container.read(loggingProvider.future),
+      container.read(otherLoggingProvider.future),
+    ]);
+
+    await parentController.dispatch(CrossControllerParentEvent(() => childController.dispatch(const ChildEvent())));
+
+    final parent = logger.records.singleWhere(
+      (record) => record.phase == EventLogPhase.eventCompleted && record.eventName == 'CrossControllerParentEvent',
+    );
+    final child = logger.records.singleWhere(
+      (record) => record.phase == EventLogPhase.eventCompleted && record.eventName == 'ChildEvent',
+    );
+    expect(parent.nextStateLabel, 'value:0');
+    expect(child.nextStateLabel, 'value:5');
+  });
+
+  test('same-controller child finishing after parent closes is not folded', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+    final controller = container.read(loggingProvider.notifier);
+    final childStarted = Completer<void>();
+    final releaseChild = Completer<void>();
+    final childCompleted = Completer<void>();
+
+    await controller.dispatch(
+      FireAndForgetParentEvent(
+        childStarted: childStarted,
+        releaseChild: releaseChild.future,
+        childCompleted: childCompleted,
+      ),
+    );
+    releaseChild.complete();
+    await childCompleted.future;
+
+    final parent = logger.records.singleWhere(
+      (record) => record.phase == EventLogPhase.eventCompleted && record.eventName == 'FireAndForgetParentEvent',
+    );
+    final child = logger.records.singleWhere(
+      (record) => record.phase == EventLogPhase.eventCompleted && record.eventName == 'DelayedChildEvent',
+    );
+    expect(parent.nextStateLabel, 'value:0');
+    expect(child.nextStateLabel, 'value:70');
+  });
+
+  test('transition logger observes the already committed next state', () async {
+    late ProviderContainer container;
+    final observedValues = <int>[];
+    final logger = CallbackEventLogger((record) {
+      if (record.phase == EventLogPhase.transition && record.eventName == 'IncrementEvent') {
+        final current = container.read(loggingProvider);
+        if (current case AsyncData<int>(:final value)) {
+          observedValues.add(value);
+        }
+      }
+    });
+    container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+
+    await container.read(loggingProvider.notifier).dispatch(const IncrementEvent());
+
+    expect(observedValues, <int>[1]);
+  });
+
+  test('failed state assignment does not emit a successful transition', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+
+    await expectLater(
+      container.read(rejectingStateProvider.notifier).dispatch(const RejectingStateEvent()),
+      throwsA(isA<StateError>().having((error) => error.message, 'message', 'assignment rejected')),
+    );
+
+    expect(
+      logger.records.where(
+        (record) => record.phase == EventLogPhase.transition && record.eventName == 'RejectingStateEvent',
+      ),
+      isEmpty,
+    );
+  });
+
   test('state writes are attributed only to their owning controller instance', () async {
     final logger = CollectingEventLogger();
     final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
@@ -757,6 +1080,67 @@ void main() {
     expect(failed.nextStateKind, AsyncValueKind.data);
     expect(failed.hasChanged, isTrue);
     expect(container.read(loggingProvider), isA<AsyncData<int>>().having((value) => value.value, 'value', 30));
+  });
+
+  test('failed dispatch keeps its owned outcome and original error stack', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+    final controller = container.read(loggingProvider.notifier);
+    final afterWrite = Completer<void>();
+    final release = Completer<void>();
+    final originalError = StateError('owned outcome failed');
+    Object? caughtError;
+    StackTrace? caughtStackTrace;
+
+    final dispatch = controller.dispatch(
+      ThrowOwnedOutcomeEvent(afterWrite: afterWrite, release: release.future, error: originalError),
+    );
+    await afterWrite.future;
+    controller.setDirectly(200);
+    release.complete();
+    try {
+      await dispatch;
+    } catch (error, stackTrace) {
+      caughtError = error;
+      caughtStackTrace = stackTrace;
+    }
+
+    final failed = logger.records.singleWhere(
+      (record) => record.phase == EventLogPhase.eventFailed && record.eventName == 'ThrowOwnedOutcomeEvent',
+    );
+    expect(caughtError, same(originalError));
+    expect(failed.error, same(originalError));
+    expect(failed.stackTrace.toString(), caughtStackTrace.toString());
+    expect(failed.previousStateLabel, 'value:0');
+    expect(failed.nextStateLabel, 'value:30');
+    expect(container.read(loggingProvider), isA<AsyncData<int>>().having((value) => value.value, 'value', 200));
+  });
+
+  test('inherited work after failed dispatch closes cannot add a transition', () async {
+    final logger = CollectingEventLogger();
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(logger)]);
+    addTearDown(container.dispose);
+    final trigger = Completer<void>();
+    final completed = Completer<void>();
+    final originalError = StateError('failed before inherited write');
+
+    await expectLater(
+      container
+          .read(loggingProvider.notifier)
+          .dispatch(InheritedWriteThenThrowEvent(trigger: trigger.future, completed: completed, error: originalError)),
+      throwsA(same(originalError)),
+    );
+    trigger.complete();
+    await completed.future;
+
+    expect(container.read(loggingProvider), isA<AsyncData<int>>().having((value) => value.value, 'value', 88));
+    expect(
+      logger.records.where(
+        (record) => record.phase == EventLogPhase.transition && record.eventName == 'InheritedWriteThenThrowEvent',
+      ),
+      isEmpty,
+    );
   });
 
   test('nested dispatches keep one trace id and create child spans', () async {

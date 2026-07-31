@@ -15,6 +15,7 @@ abstract class EventController<E> {
 /// Riverpod [AsyncNotifier] base class with a single event dispatch boundary.
 abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements EventController<E> {
   final Object _dispatchOwner = Object();
+  final Map<EventDispatchContext, _DispatchObservation<S>> _activeObservations = Map.identity();
 
   bool _didLogControllerCreated = false;
   bool _didLogInitialStateEstablished = false;
@@ -52,11 +53,17 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
       previous = null;
     }
 
+    super.state = next;
+
+    final observation = _activeObservations[dispatchContext];
+    if (observation == null) {
+      return;
+    }
+    observation.recordOwnedState(next);
+
     if (previous != null) {
       _logTransitionSafely(dispatchContext: dispatchContext, previous: previous, next: next);
     }
-
-    super.state = next;
   }
 
   @override
@@ -84,6 +91,8 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
       startedAt: startedAt,
       metadata: safeMetadata,
     );
+    final observation = _DispatchObservation<S>(before);
+    _activeObservations[dispatchContext] = observation;
     Object? error;
     StackTrace? stackTrace;
 
@@ -99,7 +108,16 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
       Error.throwWithStackTrace(caughtError, caughtStackTrace);
     } finally {
       dispatchContext.close();
-      _logEventFinishedSafely(dispatchContext: dispatchContext, before: before, error: error, stackTrace: stackTrace);
+      final outcome = observation.outcome;
+      _foldOwnedOutcomeIntoParent(dispatchContext, observation);
+      _activeObservations.remove(dispatchContext);
+      _logEventFinishedSafely(
+        dispatchContext: dispatchContext,
+        stateAtStart: observation.stateAtStart,
+        outcome: outcome,
+        error: error,
+        stackTrace: stackTrace,
+      );
     }
   }
 
@@ -266,12 +284,12 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
 
   void _logEventFinishedSafely({
     required EventDispatchContext dispatchContext,
-    required AsyncValue<S> before,
+    required AsyncValue<S> stateAtStart,
+    required AsyncValue<S> outcome,
     required Object? error,
     required StackTrace? stackTrace,
   }) {
     try {
-      final after = state;
       _writeRecordSafely(
         EventLogRecord(
           phase: error == null ? EventLogPhase.eventCompleted : EventLogPhase.eventFailed,
@@ -280,12 +298,12 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
           eventName: dispatchContext.eventName,
           startedAt: dispatchContext.startedAt,
           duration: DateTime.now().toUtc().difference(dispatchContext.startedAt),
-          previousStateKind: asyncValueKindOf(before),
-          nextStateKind: asyncValueKindOf(after),
-          hasChanged: !identical(before, after),
-          previousStateLabel: _safeStateLabel(before),
-          nextStateLabel: _safeStateLabel(after),
-          stateMetadata: _safeStateMetadata(previous: before, next: after),
+          previousStateKind: asyncValueKindOf(stateAtStart),
+          nextStateKind: asyncValueKindOf(outcome),
+          hasChanged: !identical(stateAtStart, outcome),
+          previousStateLabel: _safeStateLabel(stateAtStart),
+          nextStateLabel: _safeStateLabel(outcome),
+          stateMetadata: _safeStateMetadata(previous: stateAtStart, next: outcome),
           error: error,
           stackTrace: stackTrace,
           metadata: dispatchContext.metadata,
@@ -294,6 +312,19 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
     } catch (_) {
       // Logging must never affect application flow.
     }
+  }
+
+  void _foldOwnedOutcomeIntoParent(EventDispatchContext dispatchContext, _DispatchObservation<S> observation) {
+    if (!observation.hasOwnedOutcome) {
+      return;
+    }
+
+    final parent = dispatchContext.parent;
+    if (parent == null || !parent.isActive || !parent.owns(_dispatchOwner)) {
+      return;
+    }
+
+    _activeObservations[parent]?.recordOwnedState(observation.outcome);
   }
 
   void _writeRecordSafely(EventLogRecord record) {
@@ -371,6 +402,21 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements
     } catch (_) {
       return const {};
     }
+  }
+}
+
+final class _DispatchObservation<S> {
+  _DispatchObservation(this.stateAtStart);
+
+  final AsyncValue<S> stateAtStart;
+  AsyncValue<S>? latestOwnedState;
+  bool hasOwnedOutcome = false;
+
+  AsyncValue<S> get outcome => latestOwnedState ?? stateAtStart;
+
+  void recordOwnedState(AsyncValue<S> next) {
+    latestOwnedState = next;
+    hasOwnedOutcome = true;
   }
 }
 
