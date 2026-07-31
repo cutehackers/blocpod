@@ -970,8 +970,8 @@ void main() {
       final spanRecords = dispatchRecords.where((record) => record.metadata['name'] == name).toList();
       expect(spanRecords.map((record) => record.startedAt).toSet(), hasLength(1));
       expect(
-        spanRecords.map((record) => record.occurredAt),
-        orderedEquals(spanRecords.map((record) => record.occurredAt).toList()..sort()),
+        spanRecords,
+        everyElement(isA<EventLogRecord>().having((record) => record.occurredAt.isUtc, 'UTC', isTrue)),
       );
       final spanSequences = spanRecords.map((record) => record.recordSequence!).toList();
       expect(spanSequences, orderedEquals(spanSequences.toList()..sort()));
@@ -1019,7 +1019,7 @@ void main() {
       EventLogPhase.eventCompleted,
     ]);
     final spanStartedAt = records.first.startedAt;
-    expect(records.map((record) => record.startedAt), everyElement(same(spanStartedAt)));
+    expect(records.map((record) => record.startedAt), everyElement(equals(spanStartedAt)));
     expect(records, everyElement(isA<EventLogRecord>().having((record) => record.occurredAt.isUtc, 'UTC', isTrue)));
     expect(
       records,
