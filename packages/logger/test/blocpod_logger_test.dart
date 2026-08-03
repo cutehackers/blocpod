@@ -79,16 +79,12 @@ void main() {
 
   test('DebugPrintLogSink uses the injected encoder', () {
     final messages = <String>[];
-    final sink = Function.apply(
-      DebugPrintLogSink.new,
-      const [],
-      {
-        #encoder: const PrefixEncoder(),
-        #debugPrintOverride: (String? message, {int? wrapWidth}) {
-          messages.add(message ?? '');
-        },
+    final sink = DebugPrintLogSink(
+      encoder: const PrefixEncoder(),
+      debugPrintOverride: (String? message, {int? wrapWidth}) {
+        messages.add(message ?? '');
       },
-    ) as DebugPrintLogSink;
+    );
 
     sink.write(
       BlocpodLogEntry(
