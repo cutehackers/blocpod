@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:blocpod_logger/blocpod_logger.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -55,7 +57,7 @@ void main() {
     expect(sink.entries.single.sequence, 7);
   });
 
-  test('DebugPrintLogSink formats local development output', () {
+  test('DebugPrintLogSink uses JSON Lines by default in one callback', () {
     final messages = <String>[];
     final sink = DebugPrintLogSink(
       debugPrintOverride: (message, {wrapWidth}) {
@@ -66,83 +68,53 @@ void main() {
     sink.write(
       BlocpodLogEntry(
         level: BlocpodLogLevel.info,
-        message: 'CounterController IncrementEvent data->data',
-        timestamp: DateTime.utc(2026, 6, 1, 9, 30),
-        attributes: const {'traceId': 'trace-1', 'durationMicros': 1200},
+        message: 'created',
+        timestamp: DateTime.utc(2026, 8, 3),
       ),
     );
 
     expect(messages, hasLength(1));
-    expect(messages.single, contains('[info]'));
-    expect(messages.single, contains('2026-06-01T09:30:00.000Z'));
-    expect(messages.single, contains('CounterController IncrementEvent data->data'));
-    expect(messages.single, contains('traceId=trace-1'));
-    expect(messages.single, contains('durationMicros=1200'));
+    expect(jsonDecode(messages.single), containsPair('schema', 'blocpod.log'));
   });
 
-  test('formatting does not print sensitive metadata by default', () {
-    final formatted = formatBlocpodLogEntry(
-      BlocpodLogEntry(
-        level: BlocpodLogLevel.error,
-        message: 'failed',
-        timestamp: DateTime.utc(2026, 6),
-        attributes: const {
-          'token': 'abc',
-          'secretKey': 'hidden',
-          'credentialId': 'cred',
-          'password': 'pw',
-          'traceId': 'trace-1',
+  test('DebugPrintLogSink uses the injected encoder', () {
+    final messages = <String>[];
+    final sink = Function.apply(
+      DebugPrintLogSink.new,
+      const [],
+      {
+        #encoder: const PrefixEncoder(),
+        #debugPrintOverride: (String? message, {int? wrapWidth}) {
+          messages.add(message ?? '');
         },
-      ),
-    );
+      },
+    ) as DebugPrintLogSink;
 
-    expect(formatted, contains('traceId=trace-1'));
-    expect(formatted, isNot(contains('abc')));
-    expect(formatted, isNot(contains('hidden')));
-    expect(formatted, isNot(contains('cred')));
-    expect(formatted, isNot(contains('pw')));
-  });
-
-  test('formatting redacts nested sensitive metadata', () {
-    final formatted = formatBlocpodLogEntry(
+    sink.write(
       BlocpodLogEntry(
-        level: BlocpodLogLevel.error,
-        message: 'failed',
-        timestamp: DateTime.utc(2026, 6),
-        attributes: const {
-          'auth': {'userId': 'user-1', 'password': 'pw', 'token': 'abc'},
-          'attempts': [
-            {'step': 'refresh', 'secretKey': 'hidden', 'credentialId': 'cred'},
-          ],
-        },
+        level: BlocpodLogLevel.info,
+        message: 'created',
+        timestamp: DateTime.utc(2026, 8, 3),
       ),
     );
 
-    expect(formatted, contains('auth={userId: user-1}'));
-    expect(formatted, contains('attempts=[{step: refresh}]'));
-    expect(formatted, isNot(contains('password')));
-    expect(formatted, isNot(contains('token')));
-    expect(formatted, isNot(contains('secretKey')));
-    expect(formatted, isNot(contains('credentialId')));
-    expect(formatted, isNot(contains('pw')));
-    expect(formatted, isNot(contains('abc')));
-    expect(formatted, isNot(contains('hidden')));
-    expect(formatted, isNot(contains('cred')));
+    expect(messages, <String>['encoded:created']);
   });
 
-  test('formatting includes stack traces for error entries', () {
-    final formatted = formatBlocpodLogEntry(
-      BlocpodLogEntry(
-        level: BlocpodLogLevel.error,
-        message: 'failed',
-        timestamp: DateTime.utc(2026, 6),
-        error: StateError('boom'),
-        stackTrace: StackTrace.fromString('line 1\nline 2'),
-      ),
+  test('formatBlocpodLogEntry delegates to the default JSON encoder', () {
+    final entry = BlocpodLogEntry(
+      level: BlocpodLogLevel.info,
+      message: 'created',
+      timestamp: DateTime.utc(2026, 8, 3),
     );
 
-    expect(formatted, contains('error=Bad state: boom'));
-    expect(formatted, contains('stackTrace=line 1'));
-    expect(formatted, contains('line 2'));
+    expect(formatBlocpodLogEntry(entry), const JsonLogEncoder().encode(entry));
   });
+}
+
+final class PrefixEncoder implements BlocpodLogEncoder {
+  const PrefixEncoder();
+
+  @override
+  String encode(BlocpodLogEntry entry) => 'encoded:${entry.message}';
 }
