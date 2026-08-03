@@ -6,3 +6,4 @@ export 'src/blocpod_log_encoder.dart';
 export 'src/blocpod_log_level.dart';
 export 'src/blocpod_log_sink.dart';
 export 'src/debug_print_log_sink.dart';
+export 'src/json_log_encoder.dart';
