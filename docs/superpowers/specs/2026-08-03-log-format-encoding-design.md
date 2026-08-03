@@ -62,11 +62,15 @@ encoder를 통과해야 하는 것은 아니다. 외부 로깅 라이브러리 a
 BlocpodLogEntry
   +-> DebugPrintLogSink -> JsonLogEncoder | PrettyLogEncoder -> debugPrint
   +-> TalkerLogSink -----------------------------------------> Talker
-  +-> CustomPlatformSink ------------------------------------> external SDK
+  +-> UserProvidedLogSink -----------------------------------> user logger or SDK
 ```
 
 따라서 `DebugPrintLogSink`는 기본 제공 adapter일 뿐 고정된 하위 의존성이 아니며,
 Talker 같은 외부 logger로 완전히 교체할 수 있다.
+
+`UserProvidedLogSink`는 Blocpod이 export하는 실제 클래스명이 아니라 사용자가
+`BlocpodLogSink`를 구현해 제공하는 sink를 나타내는 설계 문서상의 역할명이다.
+실제 구현은 연결 대상에 맞춰 `TalkerLogSink`처럼 구체적인 이름을 사용한다.
 
 ## 4. 공개 API
 
@@ -472,7 +476,7 @@ sequence, trace와 attributes는 기본 목록에서 숨긴다. 상세 화면은
 외부 adapter의 교체 지점은 `BlocpodLogEncoder`가 아니라 `BlocpodLogSink`다.
 encoder는 `debugPrint`, 파일 또는 문자열 stream처럼 문자열이 필요한 sink에서만
 사용한다. Talker처럼 자체 데이터 모델과 출력 파이프라인이 있는 라이브러리는
-custom sink에서 `BlocpodLogEntry`를 직접 매핑한다.
+user-provided sink에서 `BlocpodLogEntry`를 직접 매핑한다.
 
 외부 adapter는 다음 책임을 가진다.
 
@@ -536,8 +540,8 @@ Blocpod core와 기본 logger 패키지는 외부 SDK type, level 또는 lifecyc
 - 오류와 stack trace 출력 형식을 검증한다.
 - duration 표현 경계는 arch logger formatter 테스트에서 검증한다.
 - `DebugPrintLogSink`의 기본 encoder가 JSON인지 검증한다.
-- custom encoder 주입과 `formatBlocpodLogEntry`의 JSON 위임을 검증한다.
-- encoder를 사용하지 않는 custom `BlocpodLogSink`가 원본 entry 필드를 직접
+- user-provided encoder 주입과 `formatBlocpodLogEntry`의 JSON 위임을 검증한다.
+- encoder를 사용하지 않는 user-provided `BlocpodLogSink`가 원본 entry 필드를 직접
   수신하는지 검증한다.
 - `blocpod_logger`가 외부 logger 패키지를 import하지 않는지 dependency-direction
   테스트로 검증한다.
@@ -578,8 +582,8 @@ Blocpod core와 기본 logger 패키지는 외부 SDK type, level 또는 lifecyc
 10. 지원하지 않는 metadata 값과 순환 참조가 애플리케이션 흐름을 깨뜨리지 않는다.
 11. logger, formatter와 encoder는 자동 redaction을 수행하지 않는다.
 12. 기존 FIFO 전달, event-local outcome과 trace attribution 계약은 유지된다.
-13. custom `BlocpodLogSink`는 encoder와 `DebugPrintLogSink` 없이 구조화된 entry를
-    직접 수신할 수 있다.
+13. user-provided `BlocpodLogSink`는 encoder와 `DebugPrintLogSink` 없이 구조화된
+    entry를 직접 수신할 수 있다.
 14. Blocpod 패키지는 Talker를 포함한 외부 logger SDK에 의존하지 않는다.
 15. `blocpod_logger`, `blocpod_arch_logger`와 sample의 관련 테스트 및 정적 분석이
     통과한다.
