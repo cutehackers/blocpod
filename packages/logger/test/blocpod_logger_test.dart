@@ -1,17 +1,28 @@
 import 'package:blocpod_logger/blocpod_logger.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+final class RecordingSink implements BlocpodLogSink {
+  final List<BlocpodLogEntry> entries = <BlocpodLogEntry>[];
+
+  @override
+  void write(BlocpodLogEntry entry) => entries.add(entry);
+}
+
 void main() {
-  test('BlocpodLogEntry preserves structured fields', () {
+  test('BlocpodLogEntry preserves transport-neutral structured fields', () {
     final error = StateError('failed');
     final stackTrace = StackTrace.current;
-    final timestamp = DateTime.utc(2026, 6);
+    final timestamp = DateTime.utc(2026, 8, 3);
 
     final entry = BlocpodLogEntry(
       level: BlocpodLogLevel.warning,
       message: 'dispatch finished',
       timestamp: timestamp,
-      metadata: const {'traceId': 'trace-1'},
+      sequence: 41,
+      traceId: 'trace-1',
+      spanId: 'span-1',
+      parentSpanId: 'span-0',
+      attributes: const <String, Object?>{'phase': 'event.completed'},
       error: error,
       stackTrace: stackTrace,
     );
@@ -19,9 +30,29 @@ void main() {
     expect(entry.level, BlocpodLogLevel.warning);
     expect(entry.message, 'dispatch finished');
     expect(entry.timestamp, timestamp);
-    expect(entry.metadata, containsPair('traceId', 'trace-1'));
+    expect(entry.sequence, 41);
+    expect(entry.traceId, 'trace-1');
+    expect(entry.spanId, 'span-1');
+    expect(entry.parentSpanId, 'span-0');
+    expect(entry.attributes, containsPair('phase', 'event.completed'));
     expect(entry.error, same(error));
     expect(entry.stackTrace, same(stackTrace));
+  });
+
+  test('user-provided sink receives the original structured entry', () {
+    final sink = RecordingSink();
+    final entry = BlocpodLogEntry(
+      level: BlocpodLogLevel.info,
+      message: 'direct',
+      timestamp: DateTime.utc(2026, 8, 3),
+      sequence: 7,
+      attributes: const <String, Object?>{'feature': 'counter'},
+    );
+
+    sink.write(entry);
+
+    expect(sink.entries.single, same(entry));
+    expect(sink.entries.single.sequence, 7);
   });
 
   test('DebugPrintLogSink formats local development output', () {
@@ -37,7 +68,7 @@ void main() {
         level: BlocpodLogLevel.info,
         message: 'CounterController IncrementEvent data->data',
         timestamp: DateTime.utc(2026, 6, 1, 9, 30),
-        metadata: const {'traceId': 'trace-1', 'durationMicros': 1200},
+        attributes: const {'traceId': 'trace-1', 'durationMicros': 1200},
       ),
     );
 
@@ -55,7 +86,7 @@ void main() {
         level: BlocpodLogLevel.error,
         message: 'failed',
         timestamp: DateTime.utc(2026, 6),
-        metadata: const {
+        attributes: const {
           'token': 'abc',
           'secretKey': 'hidden',
           'credentialId': 'cred',
@@ -78,7 +109,7 @@ void main() {
         level: BlocpodLogLevel.error,
         message: 'failed',
         timestamp: DateTime.utc(2026, 6),
-        metadata: const {
+        attributes: const {
           'auth': {'userId': 'user-1', 'password': 'pw', 'token': 'abc'},
           'attempts': [
             {'step': 'refresh', 'secretKey': 'hidden', 'credentialId': 'cred'},

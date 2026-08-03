@@ -17,7 +17,7 @@ final class DebugPrintLogSink implements BlocpodLogSink {
 
 /// Formats [entry] for local development logs.
 String formatBlocpodLogEntry(BlocpodLogEntry entry) {
-  final metadata = _safeMetadata(entry.metadata);
+  final metadata = _safeMetadata(entry.attributes);
   final metadataText = metadata.entries.map((entry) => '${entry.key}=${entry.value}').join(' ');
   final buffer = StringBuffer()
     ..write('[${entry.level.name}] ')
