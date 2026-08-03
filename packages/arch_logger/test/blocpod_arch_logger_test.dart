@@ -287,34 +287,55 @@ void main() {
       expect(entry.attributes.containsKey('hasChanged'), isFalse);
     });
 
-    test('pretty formatter renders transition as the canonical Blocpod state-assignment observation', () {
+    test('pretty formatter renders the exact one-line message for every event phase', () {
       const formatter = PrettyEventLogRecordFormatter();
-      final record = eventRecord(
-        phase: EventLogPhase.transition,
-        duration: null,
-        transitionIndex: 1,
-        previousStateLabel: 'count:0',
-        nextStateLabel: 'count:1',
-        stateMetadata: const <String, Object?>{'changedBy': 1},
-        metadata: const <String, Object?>{'amount': 1},
-      );
+      const expectedMessages = <EventLogPhase, String>{
+        EventLogPhase.controllerCreated: '🟢 CounterController created',
+        EventLogPhase.initialStateEstablished: '🔵 CounterController established data(ready)',
+        EventLogPhase.eventStarted:
+            '🟡 CounterController · IncrementEvent started from loading(count:0)',
+        EventLogPhase.transition:
+            '✨ CounterController · IncrementEvent transition[1] loading(count:0) → data(count:1)',
+        EventLogPhase.eventCompleted:
+            '✅ CounterController · IncrementEvent completed loading(count:0) → data(count:1) in 12ms',
+        EventLogPhase.eventFailed:
+            '🔴 CounterController · IncrementEvent failed loading(count:0) → data(count:1) in 12ms',
+        EventLogPhase.controllerDisposed: '⚪ CounterController disposed',
+      };
 
-      final entry = formatter.format(record);
+      for (final entry in expectedMessages.entries) {
+        final result = formatter.format(prettyRecordFor(entry.key));
+        expect(
+          result.level,
+          entry.key == EventLogPhase.eventFailed ? BlocpodLogLevel.error : BlocpodLogLevel.info,
+          reason: 'phase ${entry.key}',
+        );
+        expect(result.message, entry.value, reason: 'phase ${entry.key}');
+        expect(result.message.contains('\n'), isFalse, reason: 'phase ${entry.key}');
+        expect(result.message.contains('\r'), isFalse, reason: 'phase ${entry.key}');
+      }
+    });
 
-      expect(entry.level, BlocpodLogLevel.info);
-      expect(entry.message, contains('✨ state.transition -- CounterController'));
-      expect(entry.message, contains('Event: IncrementEvent'));
-      expect(entry.message, contains('previous: loading(count:0)'));
-      expect(entry.message, contains('next: data(count:1)'));
-      expect(entry.message, contains('transitionIndex: 1'));
-      expect(entry.message, contains('hasChanged: true'));
-      expect(entry.message, contains('eventMetadataKeys: amount'));
-      expect(entry.message, contains('stateMetadataKeys: changedBy'));
-      expect(entry.message, isNot(contains('amount=1')));
-      expect(entry.message, isNot(contains('changedBy=1')));
-      expect(entry.message, isNot(contains('onChange')));
-      expect(entry.attributes, containsPair('phase', 'state.transition'));
-      expect(entry.attributes, containsPair('hasChanged', true));
+    test('pretty formatter formats durations at the exact unit boundaries', () {
+      const formatter = PrettyEventLogRecordFormatter();
+      final expectedDurations = <({Duration duration, String text})>[
+        (duration: const Duration(microseconds: 840), text: '840µs'),
+        (duration: const Duration(microseconds: 1000), text: '1ms'),
+        (duration: const Duration(milliseconds: 124), text: '124ms'),
+        (duration: const Duration(milliseconds: 999), text: '999ms'),
+        (duration: const Duration(seconds: 1), text: '1s'),
+        (duration: const Duration(milliseconds: 1240), text: '1.24s'),
+        (duration: const Duration(milliseconds: 2000), text: '2s'),
+      ];
+
+      for (final entry in expectedDurations) {
+        final result = formatter.format(
+          prettyCompletedRecordWithDuration(entry.duration),
+        );
+        expect(result.message, endsWith('in ${entry.text}'), reason: 'duration ${entry.duration}');
+        expect(result.message.contains('\n'), isFalse, reason: 'duration ${entry.duration}');
+        expect(result.message.contains('\r'), isFalse, reason: 'duration ${entry.duration}');
+      }
     });
 
     test('pretty formatter preserves dedicated fields and attributes while replacing only message', () {
@@ -341,27 +362,35 @@ void main() {
       expect(entry.attributes, compact.attributes);
       expect(entry.error, compact.error);
       expect(entry.stackTrace, compact.stackTrace);
-      expect(entry.message, isNot(compact.message));
-      expect(entry.message, contains('eventMetadataKeys: recordSequence,feature'));
+      expect(entry.message, '✨ CounterController · IncrementEvent transition[0] unknown → unknown');
     });
 
-    test('pretty formatter renders initialized state without inventing an event or previous state', () {
+    test('pretty formatter uses unknown fallbacks only when event data is missing', () {
       const formatter = PrettyEventLogRecordFormatter();
+      final startedFallback = EventLogRecord(
+        phase: EventLogPhase.eventStarted,
+        traceContext: TraceContext.root(startedAt: DateTime.utc(2026, 8, 3, 10)),
+        controllerName: 'CounterController',
+        startedAt: DateTime.utc(2026, 8, 3, 10),
+      );
+      final establishedFallback = EventLogRecord(
+        phase: EventLogPhase.initialStateEstablished,
+        traceContext: TraceContext.root(startedAt: DateTime.utc(2026, 8, 3, 10)),
+        controllerName: 'CounterController',
+        startedAt: DateTime.utc(2026, 8, 3, 10),
+      );
 
-      final entry = formatter.format(establishedInitialStateRecord());
-
-      expect(entry.message, contains('🔵 state.established -- CounterController'));
-      expect(entry.message, contains('next: data(ready)'));
-      expect(entry.message, contains('metadataKeys: feature'));
-      expect(entry.message, contains('stateMetadataKeys: status'));
-      expect(entry.message, isNot(contains('Event:')));
-      expect(entry.message, isNot(contains('previous:')));
-      expect(entry.message, isNot(contains('feature=counter')));
-      expect(entry.message, isNot(contains('status=ready')));
-      expect(entry.attributes, containsPair('phase', 'state.established'));
+      expect(
+        formatter.format(startedFallback).message,
+        '🟡 CounterController · unknownEvent started from unknown',
+      );
+      expect(
+        formatter.format(establishedFallback).message,
+        '🔵 CounterController established unknown',
+      );
     });
 
-    test('pretty formatter does not embed metadata values in messages', () {
+    test('pretty formatter keeps metadata structured for sinks without appending summaries to the message', () {
       const formatter = PrettyEventLogRecordFormatter();
       final record = eventRecord(
         phase: EventLogPhase.transition,
@@ -383,20 +412,9 @@ void main() {
 
       final message = formatter.format(record).message;
 
-      expect(
-        message,
-        contains('eventMetadataKeys: customerEmail,emailLength,token,secretKey,credentialId,password,nested'),
-      );
-      expect(message, contains('stateMetadataKeys: status,password'));
+      expect(message, '✨ CounterController · IncrementEvent transition[1] loading(ready) → data(saving)');
       expect(message, isNot(contains('user@example.com')));
-      expect(message, isNot(contains('emailLength=16')));
-      expect(message, isNot(contains('nested={safe: visible}')));
       expect(message, isNot(contains('status=saving')));
-      expect(message, isNot(contains('abc')));
-      expect(message, isNot(contains('hidden')));
-      expect(message, isNot(contains('credentialId=cred')));
-      expect(message, isNot(contains('pw')));
-      expect(message, isNot(contains('nested-token')));
       expect(message, isNot(contains('state-password')));
     });
 
@@ -415,7 +433,7 @@ void main() {
         entry.attributes,
         containsPair('eventMetadata', <String, Object?>{'token': 'sink-redaction-stays-with-sink'}),
       );
-      expect(entry.message, contains('eventMetadataKeys: token'));
+      expect(entry.message, '✨ CounterController · IncrementEvent transition[1] loading → data');
       expect(entry.message, isNot(contains('sink-redaction-stays-with-sink')));
     });
 
@@ -555,5 +573,59 @@ EventLogRecord establishedInitialStateRecord({Object? error, StackTrace? stackTr
     error: error,
     stackTrace: stackTrace,
     metadata: const <String, Object?>{'feature': 'counter'},
+  );
+}
+
+EventLogRecord prettyRecordFor(EventLogPhase phase) {
+  final startedAt = DateTime.utc(2026, 8, 3, 10);
+  final isEvent = switch (phase) {
+    EventLogPhase.eventStarted ||
+    EventLogPhase.transition ||
+    EventLogPhase.eventCompleted ||
+    EventLogPhase.eventFailed => true,
+    _ => false,
+  };
+  return EventLogRecord(
+    phase: phase,
+    traceContext: TraceContext.root(startedAt: startedAt),
+    controllerName: 'CounterController',
+    eventName: isEvent ? 'IncrementEvent' : null,
+    startedAt: startedAt,
+    duration:
+        phase == EventLogPhase.eventCompleted || phase == EventLogPhase.eventFailed
+            ? const Duration(milliseconds: 12)
+            : null,
+    transitionIndex: phase == EventLogPhase.transition ? 1 : null,
+    previousStateKind: isEvent ? AsyncValueKind.loading : null,
+    previousStateLabel: isEvent ? 'count:0' : null,
+    nextStateKind: switch (phase) {
+      EventLogPhase.initialStateEstablished ||
+      EventLogPhase.transition ||
+      EventLogPhase.eventCompleted ||
+      EventLogPhase.eventFailed => AsyncValueKind.data,
+      _ => null,
+    },
+    nextStateLabel: switch (phase) {
+      EventLogPhase.initialStateEstablished => 'ready',
+      EventLogPhase.transition || EventLogPhase.eventCompleted || EventLogPhase.eventFailed => 'count:1',
+      _ => null,
+    },
+    error: phase == EventLogPhase.eventFailed ? StateError('failed') : null,
+  );
+}
+
+EventLogRecord prettyCompletedRecordWithDuration(Duration duration) {
+  final startedAt = DateTime.utc(2026, 8, 3, 10);
+  return EventLogRecord(
+    phase: EventLogPhase.eventCompleted,
+    traceContext: TraceContext.root(startedAt: startedAt),
+    controllerName: 'CounterController',
+    eventName: 'IncrementEvent',
+    startedAt: startedAt,
+    duration: duration,
+    previousStateKind: AsyncValueKind.loading,
+    previousStateLabel: 'count:0',
+    nextStateKind: AsyncValueKind.data,
+    nextStateLabel: 'count:1',
   );
 }

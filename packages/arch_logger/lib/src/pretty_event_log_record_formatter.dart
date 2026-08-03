@@ -26,65 +26,22 @@ final class PrettyEventLogRecordFormatter implements BlocpodEventLogFormatter {
 
   String _messageFor(EventLogRecord record) {
     return switch (record.phase) {
-      EventLogPhase.controllerCreated => _lifecycleMessage('🟢 controller.created', record),
-      EventLogPhase.initialStateEstablished => _initialStateEstablishedMessage(record),
-      EventLogPhase.controllerDisposed => _lifecycleMessage('⚪ controller.disposed', record),
-      EventLogPhase.eventStarted => _eventStartedMessage(record),
-      EventLogPhase.transition => _transitionMessage(record),
-      EventLogPhase.eventCompleted => _eventFinishedMessage('✅ event.completed', record),
-      EventLogPhase.eventFailed => _eventFinishedMessage('🔴 event.failed', record),
+      EventLogPhase.controllerCreated => '🟢 ${record.controllerName} created',
+      EventLogPhase.initialStateEstablished =>
+        '🔵 ${record.controllerName} established ${_stateText(record.nextStateKind, record.nextStateLabel)}',
+      EventLogPhase.controllerDisposed => '⚪ ${record.controllerName} disposed',
+      EventLogPhase.eventStarted =>
+        '🟡 ${record.controllerName} · ${record.eventName ?? 'unknownEvent'} started from ${_stateText(record.previousStateKind, record.previousStateLabel)}',
+      EventLogPhase.transition =>
+        '✨ ${record.controllerName} · ${record.eventName ?? 'unknownEvent'} transition[${record.transitionIndex ?? 0}] ${_stateChangeText(record)}',
+      EventLogPhase.eventCompleted => _eventFinishedMessage('✅', 'completed', record),
+      EventLogPhase.eventFailed => _eventFinishedMessage('🔴', 'failed', record),
     };
   }
 
-  String _initialStateEstablishedMessage(EventLogRecord record) {
-    final buffer = StringBuffer()
-      ..writeln('🔵 state.established -- ${record.controllerName}')
-      ..writeln('   next: ${_stateText(record.nextStateKind, record.nextStateLabel)}')
-      ..write('   trace: ${record.traceContext.traceId}/${record.traceContext.spanId}');
-    _appendMetadataLine(buffer, 'metadata', record.metadata);
-    _appendMetadataLine(buffer, 'stateMetadata', record.stateMetadata);
-    return buffer.toString();
-  }
-
-  String _lifecycleMessage(String title, EventLogRecord record) {
-    final buffer = StringBuffer()
-      ..writeln('$title -- ${record.controllerName}')
-      ..write('   trace: ${record.traceContext.traceId}/${record.traceContext.spanId}');
-    _appendMetadataLine(buffer, 'metadata', record.metadata);
-    return buffer.toString();
-  }
-
-  String _eventStartedMessage(EventLogRecord record) {
-    final buffer = StringBuffer()
-      ..writeln('🟡 event.started -- ${record.controllerName}, Event: ${record.eventName ?? 'unknownEvent'}')
-      ..writeln('   previous: ${_stateText(record.previousStateKind, record.previousStateLabel)}')
-      ..write('   trace: ${record.traceContext.traceId}/${record.traceContext.spanId}');
-    _appendMetadataLine(buffer, 'eventMetadata', record.metadata);
-    return buffer.toString();
-  }
-
-  String _transitionMessage(EventLogRecord record) {
-    final buffer = StringBuffer()
-      ..writeln('✨ state.transition -- ${record.controllerName}, Event: ${record.eventName ?? 'unknownEvent'}')
-      ..writeln('   previous: ${_stateText(record.previousStateKind, record.previousStateLabel)}')
-      ..writeln('   next: ${_stateText(record.nextStateKind, record.nextStateLabel)}')
-      ..writeln('   transitionIndex: ${record.transitionIndex ?? 0}')
-      ..write('   hasChanged: ${record.hasChanged ?? false}');
-    _appendMetadataLine(buffer, 'eventMetadata', record.metadata);
-    _appendMetadataLine(buffer, 'stateMetadata', record.stateMetadata);
-    return buffer.toString();
-  }
-
-  String _eventFinishedMessage(String title, EventLogRecord record) {
-    final durationText = record.duration == null ? 'unknown' : '${record.duration!.inMilliseconds}ms';
-    final buffer = StringBuffer()
-      ..writeln('$title -- ${record.controllerName}, Event: ${record.eventName ?? 'unknownEvent'}')
-      ..writeln('   previous: ${_stateText(record.previousStateKind, record.previousStateLabel)}')
-      ..writeln('   next: ${_stateText(record.nextStateKind, record.nextStateLabel)}')
-      ..write('   duration: $durationText');
-    _appendMetadataLine(buffer, 'eventMetadata', record.metadata);
-    _appendMetadataLine(buffer, 'stateMetadata', record.stateMetadata);
-    return buffer.toString();
+  String _eventFinishedMessage(String emoji, String verb, EventLogRecord record) {
+    final durationText = record.duration == null ? 'unknown' : _formatDuration(record.duration!);
+    return '$emoji ${record.controllerName} · ${record.eventName ?? 'unknownEvent'} $verb ${_stateChangeText(record)} in $durationText';
   }
 
   String _stateText(AsyncValueKind? kind, String? label) {
@@ -95,21 +52,18 @@ final class PrettyEventLogRecordFormatter implements BlocpodEventLogFormatter {
     return '$kindText($label)';
   }
 
-  void _appendMetadataLine(StringBuffer buffer, String label, Map<String, Object?> metadata) {
-    final keys = _safeMetadataKeys(metadata);
-    if (keys.isEmpty) {
-      return;
-    }
-    buffer
-      ..writeln()
-      ..write('   ${label}Keys: ${keys.join(',')}');
+  String _stateChangeText(EventLogRecord record) {
+    return '${_stateText(record.previousStateKind, record.previousStateLabel)} → ${_stateText(record.nextStateKind, record.nextStateLabel)}';
   }
 
-  List<String> _safeMetadataKeys(Map<String, Object?> metadata) {
-    final keys = <String>[];
-    for (final entry in metadata.entries) {
-      keys.add(entry.key);
+  String _formatDuration(Duration duration) {
+    final microseconds = duration.inMicroseconds;
+    if (microseconds < Duration.microsecondsPerMillisecond) {
+      return '${microseconds}µs';
     }
-    return keys;
+    if (microseconds < Duration.microsecondsPerSecond) {
+      return '${microseconds ~/ Duration.microsecondsPerMillisecond}ms';
+    }
+    return '${(microseconds / Duration.microsecondsPerSecond).toStringAsFixed(2).replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '')}s';
   }
 }
