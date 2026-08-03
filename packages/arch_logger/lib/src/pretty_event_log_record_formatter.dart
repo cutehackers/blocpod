@@ -59,7 +59,7 @@ final class PrettyEventLogRecordFormatter implements BlocpodEventLogFormatter {
   String _formatDuration(Duration duration) {
     final microseconds = duration.inMicroseconds;
     if (microseconds < Duration.microsecondsPerMillisecond) {
-      return '${microseconds}µs';
+      return '$microsecondsµs';
     }
     if (microseconds < Duration.microsecondsPerSecond) {
       return '${microseconds ~/ Duration.microsecondsPerMillisecond}ms';
