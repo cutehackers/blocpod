@@ -54,6 +54,20 @@ EventLogRecord
 formatter가 최종 JSON을 `message`에 넣거나 JSON과 사람용 sink를 각각
 복제해서 구현하지 않는다. 포맷은 encoder가 소유하고 전송은 sink가 소유한다.
 
+`BlocpodLogEncoder`는 문자열 기반 sink를 위한 선택적 직렬화 도구다. 모든 sink가
+encoder를 통과해야 하는 것은 아니다. 외부 로깅 라이브러리 adapter는
+`BlocpodLogSink`를 구현하고 구조화된 `BlocpodLogEntry`를 직접 변환한다.
+
+```text
+BlocpodLogEntry
+  +-> DebugPrintLogSink -> JsonLogEncoder | PrettyLogEncoder -> debugPrint
+  +-> TalkerLogSink -----------------------------------------> Talker
+  +-> CustomPlatformSink ------------------------------------> external SDK
+```
+
+따라서 `DebugPrintLogSink`는 기본 제공 adapter일 뿐 고정된 하위 의존성이 아니며,
+Talker 같은 외부 logger로 완전히 교체할 수 있다.
+
 ## 4. 공개 API
 
 ### 4.1 `BlocpodLogEncoder`
@@ -168,6 +182,49 @@ String formatBlocpodLogEntry(BlocpodLogEntry entry) {
 ```
 
 호출 코드는 유지되지만 반환 형식은 0.2.0부터 평문이 아니라 JSON 한 줄이다.
+
+### 4.4 외부 logger 교체 지점
+
+`BlocpodLogSink`는 외부 logger를 연결하는 공식 port다. 인터페이스는 구조화된
+entry를 그대로 전달하는 현재 형태를 유지한다.
+
+```dart
+abstract interface class BlocpodLogSink {
+  void write(BlocpodLogEntry entry);
+}
+```
+
+Talker adapter의 개념적 형태는 다음과 같다.
+
+```dart
+final class TalkerLogSink implements BlocpodLogSink {
+  TalkerLogSink(this.talker);
+
+  final Talker talker;
+
+  @override
+  void write(BlocpodLogEntry entry) {
+    talker.logCustom(BlocpodTalkerLog(entry));
+  }
+}
+```
+
+`BlocpodTalkerLog`는 adapter가 소유하며 level, timestamp, trace, attributes, error와
+stack trace를 Talker 데이터 모델로 변환한다. adapter는 JSON이나 pretty 문자열을
+재파싱하지 않는다. 문자열 입력만 지원하는 외부 logger라면 adapter가 필요에 따라
+`JsonLogEncoder` 또는 `PrettyLogEncoder`를 명시적으로 사용할 수 있다.
+
+```dart
+eventLoggerProvider.overrideWithValue(
+  BlocpodEventLogger(
+    TalkerLogSink(talker),
+  ),
+)
+```
+
+`blocpod_logger`와 `blocpod_arch_logger`는 Talker를 포함한 특정 외부 logger에
+의존하지 않는다. Talker adapter는 애플리케이션 또는 향후 별도 integration
+패키지가 소유한다.
 
 ## 5. 기본 JSON Lines 스키마
 
@@ -412,6 +469,23 @@ sequence, trace와 attributes는 기본 목록에서 숨긴다. 상세 화면은
 `BlocpodLogEntry`의 전용 필드와 attributes를 직접 읽어 플랫폼 데이터 모델로
 변환한다.
 
+외부 adapter의 교체 지점은 `BlocpodLogEncoder`가 아니라 `BlocpodLogSink`다.
+encoder는 `debugPrint`, 파일 또는 문자열 stream처럼 문자열이 필요한 sink에서만
+사용한다. Talker처럼 자체 데이터 모델과 출력 파이프라인이 있는 라이브러리는
+custom sink에서 `BlocpodLogEntry`를 직접 매핑한다.
+
+외부 adapter는 다음 책임을 가진다.
+
+- Blocpod level을 외부 logger level로 매핑
+- message, timestamp와 sequence 전달
+- trace/span과 attributes 전달 또는 외부 모델에 맞게 변환
+- error와 stack trace 전달
+- 외부 logger의 filtering, history, formatting 및 전송 API 호출
+- 필요하다면 해당 플랫폼 정책에 맞는 redaction 수행
+
+Blocpod core와 기본 logger 패키지는 외부 SDK type, level 또는 lifecycle을 알지
+않는다.
+
 파일 또는 네트워크 sink, batching, retry, sampling, 앱 인스턴스 ID와 isolate ID
 자동 생성도 이번 범위에 포함하지 않는다.
 
@@ -463,6 +537,10 @@ sequence, trace와 attributes는 기본 목록에서 숨긴다. 상세 화면은
 - duration 표현 경계는 arch logger formatter 테스트에서 검증한다.
 - `DebugPrintLogSink`의 기본 encoder가 JSON인지 검증한다.
 - custom encoder 주입과 `formatBlocpodLogEntry`의 JSON 위임을 검증한다.
+- encoder를 사용하지 않는 custom `BlocpodLogSink`가 원본 entry 필드를 직접
+  수신하는지 검증한다.
+- `blocpod_logger`가 외부 logger 패키지를 import하지 않는지 dependency-direction
+  테스트로 검증한다.
 
 ### 13.2 `blocpod_arch_logger`
 
@@ -500,5 +578,8 @@ sequence, trace와 attributes는 기본 목록에서 숨긴다. 상세 화면은
 10. 지원하지 않는 metadata 값과 순환 참조가 애플리케이션 흐름을 깨뜨리지 않는다.
 11. logger, formatter와 encoder는 자동 redaction을 수행하지 않는다.
 12. 기존 FIFO 전달, event-local outcome과 trace attribution 계약은 유지된다.
-13. `blocpod_logger`, `blocpod_arch_logger`와 sample의 관련 테스트 및 정적 분석이
+13. custom `BlocpodLogSink`는 encoder와 `DebugPrintLogSink` 없이 구조화된 entry를
+    직접 수신할 수 있다.
+14. Blocpod 패키지는 Talker를 포함한 외부 logger SDK에 의존하지 않는다.
+15. `blocpod_logger`, `blocpod_arch_logger`와 sample의 관련 테스트 및 정적 분석이
     통과한다.
