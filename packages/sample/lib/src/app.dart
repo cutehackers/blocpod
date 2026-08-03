@@ -23,7 +23,12 @@ final class _BlocpodSampleAppState extends State<BlocpodSampleApp> {
     return ProviderScope(
       overrides: [
         inMemoryLogSinkProvider.overrideWithValue(_sink),
-        eventLoggerProvider.overrideWithValue(BlocpodEventLogger(_sink)),
+        eventLoggerProvider.overrideWithValue(
+          BlocpodEventLogger(
+            _sink,
+            formatter: const PrettyEventLogRecordFormatter(),
+          ),
+        ),
       ],
       child: const MaterialApp(title: 'Blocpod Sample', home: SampleHome()),
     );
@@ -224,14 +229,7 @@ final class EventLogPanel extends ConsumerWidget {
               for (final entry in entries)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(entry.message),
-                      if (_visibleMetadata(entry.metadata).isNotEmpty)
-                        Text(_visibleMetadata(entry.metadata), style: Theme.of(context).textTheme.bodySmall),
-                    ],
-                  ),
+                  child: Text(entry.message),
                 ),
             ],
           );
@@ -239,30 +237,6 @@ final class EventLogPanel extends ConsumerWidget {
       ),
     );
   }
-}
-
-const Set<String> _reservedLogMetadataKeys = <String>{
-  'phase',
-  'traceId',
-  'spanId',
-  'parentSpanId',
-  'controllerName',
-  'eventName',
-  'durationMicros',
-  'transitionIndex',
-  'previousStateKind',
-  'nextStateKind',
-  'hasChanged',
-  'previousStateLabel',
-  'nextStateLabel',
-  'stateMetadata',
-};
-
-String _visibleMetadata(Map<String, Object?> metadata) {
-  return metadata.entries
-      .where((entry) => !_reservedLogMetadataKeys.contains(entry.key) && entry.value != null)
-      .map((entry) => '${entry.key}=${entry.value}')
-      .join(' | ');
 }
 
 final class _SampleSection extends StatelessWidget {

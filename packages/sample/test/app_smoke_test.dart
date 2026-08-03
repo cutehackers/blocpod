@@ -17,7 +17,10 @@ void main() {
     await tester.pump();
 
     expect(find.text('Count: 2'), findsOneWidget);
-    expect(_textContaining('event.completed'), findsAtLeastNWidgets(1));
+    expect(
+      _textContaining('✅ SampleCounterController · CounterIncremented completed'),
+      findsAtLeastNWidgets(1),
+    );
 
     await tester.ensureVisible(find.widgetWithText(FilledButton, 'Load todos'));
     await tester.tap(find.widgetWithText(FilledButton, 'Load todos'));
@@ -37,8 +40,9 @@ void main() {
 
     expect(find.text('Regular: 2'), findsOneWidget);
     expect(_textContaining('VariantCounterController'), findsAtLeastNWidgets(1));
-    expect(_textContaining('providerName=regularVariantProvider'), findsAtLeastNWidgets(1));
-    expect(_textContaining('providerKind=regular'), findsAtLeastNWidgets(1));
+    expect(_textContaining('providerName='), findsNothing);
+    expect(_textContaining('providerKind='), findsNothing);
+    expect(_textContaining('sequence='), findsNothing);
   });
 }
 
