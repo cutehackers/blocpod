@@ -130,6 +130,27 @@ void main() {
       expect(attributes['oddKeys'], <String, Object?>{'1': 'string-key-wins'});
     });
 
+    test('normalizes null map keys and lets a later string key win', () {
+      final decoded =
+          jsonDecode(
+                const JsonLogEncoder().encode(
+                  BlocpodLogEntry(
+                    level: BlocpodLogLevel.info,
+                    message: 'null key',
+                    timestamp: DateTime.utc(2026, 8, 3),
+                    attributes: <String, Object?>{
+                      'keys': <Object?, Object?>{null: 'from-null-key', 'null': 'from-string-key'},
+                    },
+                  ),
+                ),
+              )
+              as Map<String, Object?>;
+
+      expect(decoded['attributes'], <String, Object?>{
+        'keys': <String, Object?>{'null': 'from-string-key'},
+      });
+    });
+
     test('marks active-path cycles but preserves shared sibling values', () {
       final cycle = <Object?>[];
       cycle.add(cycle);

@@ -22,6 +22,14 @@ final class PrettyLogEncoder implements BlocpodLogEncoder {
 
   @override
   String encode(BlocpodLogEntry entry) {
+    try {
+      return _encode(entry);
+    } catch (_) {
+      return _fallbackPrettyLine(entry);
+    }
+  }
+
+  String _encode(BlocpodLogEntry entry) {
     final buffer = StringBuffer()
       ..write(_formatUtcTime(entry.timestamp))
       ..write(' ')
@@ -30,7 +38,10 @@ final class PrettyLogEncoder implements BlocpodLogEncoder {
       ..write(_singleLineText(entry.message));
 
     if (detail == PrettyLogDetail.verbose) {
-      final diagnostics = <String?>[_formatSequenceAndTrace(entry), _formatAttributes(entry)];
+      final diagnostics = <String?>[
+        _bestEffortDiagnostic(() => _formatSequenceAndTrace(entry)),
+        _bestEffortDiagnostic(() => _formatAttributes(entry)),
+      ];
 
       for (final diagnostic in diagnostics) {
         if (diagnostic != null && diagnostic.isNotEmpty) {
@@ -51,6 +62,24 @@ final class PrettyLogEncoder implements BlocpodLogEncoder {
     }
 
     return buffer.toString();
+  }
+}
+
+String? _bestEffortDiagnostic(String? Function() format) {
+  try {
+    return format();
+  } catch (_) {
+    return null;
+  }
+}
+
+String _fallbackPrettyLine(BlocpodLogEntry entry) {
+  try {
+    return '${_formatUtcTime(entry.timestamp)} '
+        '${entry.level.name.toUpperCase().padRight(5)} '
+        '${_singleLineText(entry.message)}';
+  } catch (_) {
+    return '00:00:00.000Z ERROR Blocpod log encoding failed';
   }
 }
 
@@ -96,7 +125,7 @@ String? _formatAttributes(BlocpodLogEntry entry) {
     return null;
   }
 
-  final normalized = normalizeLogValue(entry.attributes, maxDepth: PrettyLogEncoder._maxDepth);
+  final normalized = normalizeLogAttributes(entry.attributes, maxDepth: PrettyLogEncoder._maxDepth);
   return 'attributes=${_formatNormalizedValue(normalized)}';
 }
 

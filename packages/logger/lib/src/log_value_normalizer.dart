@@ -4,7 +4,19 @@ Object? normalizeLogValue(Object? value, {required int maxDepth}) {
   return _normalizeLogValue(value, maxDepth: maxDepth, depth: 1, activePath: HashSet<Object>.identity());
 }
 
-String safeLogText(Object value) {
+Map<String, Object?> normalizeLogAttributes(Map<String, Object?> attributes, {required int maxDepth}) {
+  final normalized = <String, Object?>{};
+  for (final MapEntry(:key, :value) in attributes.entries) {
+    normalized[key] = normalizeLogValue(value, maxDepth: maxDepth);
+  }
+  return normalized;
+}
+
+String safeLogText(Object? value) {
+  if (value == null) {
+    return 'null';
+  }
+
   try {
     return value.toString();
   } catch (_) {

@@ -1,9 +1,29 @@
+import 'dart:collection';
+import 'dart:convert';
+
 import 'package:blocpod_logger/blocpod_logger.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 final class ThrowingText {
   @override
   String toString() => throw StateError('cannot stringify');
+}
+
+final class ThrowingStringMap extends MapBase<String, Object?> {
+  @override
+  Object? operator [](Object? key) => null;
+
+  @override
+  void operator []=(String key, Object? value) {}
+
+  @override
+  void clear() {}
+
+  @override
+  Iterable<String> get keys => throw StateError('cannot iterate');
+
+  @override
+  Object? remove(Object? key) => null;
 }
 
 void main() {
@@ -69,6 +89,70 @@ void main() {
 
       expect(output, contains('<cycle>'));
       expect(output, contains('<ThrowingText>'));
+    });
+
+    test('verbose preserves the base line when attributes cannot be inspected', () {
+      final entry = BlocpodLogEntry(
+        level: BlocpodLogLevel.warning,
+        message: 'keep this event',
+        timestamp: DateTime.utc(2026, 8, 3, 11, 12, 13, 14),
+        attributes: ThrowingStringMap(),
+      );
+
+      expect(() => const PrettyLogEncoder(detail: PrettyLogDetail.verbose).encode(entry), returnsNormally);
+      expect(
+        const PrettyLogEncoder(detail: PrettyLogDetail.verbose).encode(entry),
+        '11:12:13.014Z WARNING keep this event',
+      );
+    });
+
+    test('verbose matches JSON attribute depth at the nested-container boundary', () {
+      final entry = BlocpodLogEntry(
+        level: BlocpodLogLevel.info,
+        message: 'depth',
+        timestamp: DateTime.utc(2026, 8, 3),
+        attributes: const <String, Object?>{
+          'root': <String, Object?>{
+            'd2': <String, Object?>{
+              'd3': <String, Object?>{
+                'd4': <String, Object?>{
+                  'd5': <String, Object?>{
+                    'd6': <String, Object?>{
+                      'd7': <String, Object?>{
+                        'd8': <String, Object?>{'leaf': 1},
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      );
+
+      final jsonAttributes =
+          (jsonDecode(const JsonLogEncoder(maxDepth: 8).encode(entry)) as Map<String, Object?>)['attributes'];
+
+      expect(jsonAttributes, <String, Object?>{
+        'root': <String, Object?>{
+          'd2': <String, Object?>{
+            'd3': <String, Object?>{
+              'd4': <String, Object?>{
+                'd5': <String, Object?>{
+                  'd6': <String, Object?>{
+                    'd7': <String, Object?>{'d8': '<max-depth-exceeded>'},
+                  },
+                },
+              },
+            },
+          },
+        },
+      });
+      expect(
+        const PrettyLogEncoder(detail: PrettyLogDetail.verbose).encode(entry),
+        '00:00:00.000Z INFO  depth\n'
+        '  attributes={root: {d2: {d3: {d4: {d5: {d6: {d7: {d8: <max-depth-exceeded>}}}}}}}}',
+      );
     });
 
     test('compact hides diagnostics and empty verbose adds no lines', () {
