@@ -30,10 +30,7 @@ final class PrettyLogEncoder implements BlocpodLogEncoder {
       ..write(_singleLineText(entry.message));
 
     if (detail == PrettyLogDetail.verbose) {
-      final diagnostics = <String?>[
-        _formatSequenceAndTrace(entry),
-        _formatAttributes(entry),
-      ];
+      final diagnostics = <String?>[_formatSequenceAndTrace(entry), _formatAttributes(entry)];
 
       for (final diagnostic in diagnostics) {
         if (diagnostic != null && diagnostic.isNotEmpty) {
@@ -62,10 +59,7 @@ String _formatUtcTime(DateTime timestamp) {
 }
 
 String _singleLineText(String text) {
-  return text
-      .replaceAll('\r\n', '\n')
-      .replaceAll('\r', '\n')
-      .replaceAll('\n', r'\n');
+  return text.replaceAll('\r\n', '\n').replaceAll('\r', '\n').replaceAll('\n', r'\n');
 }
 
 String? _formatSequenceAndTrace(BlocpodLogEntry entry) {
@@ -102,10 +96,7 @@ String? _formatAttributes(BlocpodLogEntry entry) {
     return null;
   }
 
-  final normalized = normalizeLogValue(
-    entry.attributes,
-    maxDepth: PrettyLogEncoder._maxDepth,
-  );
+  final normalized = normalizeLogValue(entry.attributes, maxDepth: PrettyLogEncoder._maxDepth);
   return 'attributes=${_formatNormalizedValue(normalized)}';
 }
 
@@ -115,9 +106,7 @@ String _formatNormalizedValue(Object? value) {
   }
 
   if (value is Map<Object?, Object?>) {
-    final entries = value.entries.map(
-      (entry) => '${entry.key}: ${_formatNormalizedValue(entry.value)}',
-    );
+    final entries = value.entries.map((entry) => '${entry.key}: ${_formatNormalizedValue(entry.value)}');
     return '{${entries.join(', ')}}';
   }
 
@@ -137,10 +126,7 @@ String _formatError(Object error) {
     return text;
   }
 
-  final lines = text
-      .replaceAll('\r\n', '\n')
-      .replaceAll('\r', '\n')
-      .split('\n');
+  final lines = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n').split('\n');
   if (lines.isEmpty) {
     return type;
   }
@@ -149,10 +135,7 @@ String _formatError(Object error) {
 }
 
 void _appendIndentedLines(StringBuffer buffer, String text) {
-  final lines = text
-      .replaceAll('\r\n', '\n')
-      .replaceAll('\r', '\n')
-      .split('\n');
+  final lines = text.replaceAll('\r\n', '\n').replaceAll('\r', '\n').split('\n');
   for (final line in lines) {
     if (line.isEmpty) {
       continue;

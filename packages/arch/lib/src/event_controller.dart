@@ -14,11 +14,9 @@ abstract class EventController<E> {
 }
 
 /// Riverpod [AsyncNotifier] base class with a single event dispatch boundary.
-abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
-    implements EventController<E> {
+abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S> implements EventController<E> {
   final Object _dispatchOwner = Object();
-  final Map<EventDispatchContext, _DispatchObservation<S>> _activeObservations =
-      Map.identity();
+  final Map<EventDispatchContext, _DispatchObservation<S>> _activeObservations = Map.identity();
 
   int _nextOwnedWriteOrdinal = 0;
   bool _didLogControllerCreated = false;
@@ -65,9 +63,7 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
 
     _nextOwnedWriteOrdinal += 1;
     final writeOrdinal = _nextOwnedWriteOrdinal;
-    final transitionIndex = previous == null
-        ? null
-        : dispatchContext.nextTransitionIndex();
+    final transitionIndex = previous == null ? null : dispatchContext.nextTransitionIndex();
     ObservationOccurrence? occurrence;
     if (previous != null) {
       try {
@@ -204,10 +200,7 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
   /// Values must not include secrets, raw state payloads, or other sensitive
   /// application data.
   @protected
-  Map<String, Object?> stateMetadata({
-    required AsyncValue<S> previous,
-    required AsyncValue<S> next,
-  }) {
+  Map<String, Object?> stateMetadata({required AsyncValue<S> previous, required AsyncValue<S> next}) {
     return const {};
   }
 
@@ -259,10 +252,7 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
           recordSequence: occurrence.recordSequence,
           nextStateKind: asyncValueKindOf(initialized),
           nextStateLabel: _safeStateLabel(initialized),
-          stateMetadata: _safeStateMetadata(
-            previous: initialized,
-            next: initialized,
-          ),
+          stateMetadata: _safeStateMetadata(previous: initialized, next: initialized),
           error: error,
           stackTrace: stackTrace,
           metadata: _safeControllerMetadata(),
@@ -297,10 +287,7 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
     });
   }
 
-  void _logEventStartedSafely({
-    required EventDispatchContext dispatchContext,
-    required AsyncValue<S> before,
-  }) {
+  void _logEventStartedSafely({required EventDispatchContext dispatchContext, required AsyncValue<S> before}) {
     final occurrence = ObservationRuntime.capture();
     _publishRecordSafely(occurrence, () {
       return EventLogRecord(
@@ -357,9 +344,7 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
   }) {
     _publishRecordSafely(occurrence, () {
       return EventLogRecord(
-        phase: error == null
-            ? EventLogPhase.eventCompleted
-            : EventLogPhase.eventFailed,
+        phase: error == null ? EventLogPhase.eventCompleted : EventLogPhase.eventFailed,
         traceContext: dispatchContext.traceContext,
         controllerName: dispatchContext.controllerName,
         eventName: dispatchContext.eventName,
@@ -372,10 +357,7 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
         hasChanged: !identical(stateAtStart, outcome),
         previousStateLabel: _safeStateLabel(stateAtStart),
         nextStateLabel: _safeStateLabel(outcome),
-        stateMetadata: _safeStateMetadata(
-          previous: stateAtStart,
-          next: outcome,
-        ),
+        stateMetadata: _safeStateMetadata(previous: stateAtStart, next: outcome),
         error: error,
         stackTrace: stackTrace,
         metadata: dispatchContext.metadata,
@@ -383,10 +365,7 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
     });
   }
 
-  void _foldOwnedOutcomeIntoParent(
-    EventDispatchContext dispatchContext,
-    _DispatchObservation<S> observation,
-  ) {
+  void _foldOwnedOutcomeIntoParent(EventDispatchContext dispatchContext, _DispatchObservation<S> observation) {
     if (!observation.hasOwnedOutcome) {
       return;
     }
@@ -402,10 +381,7 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
     );
   }
 
-  void _publishRecordSafely(
-    ObservationOccurrence occurrence,
-    EventLogRecord Function() buildRecord,
-  ) {
+  void _publishRecordSafely(ObservationOccurrence occurrence, EventLogRecord Function() buildRecord) {
     try {
       final record = buildRecord();
       final logger = _readLoggerSafely();
@@ -453,10 +429,7 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
   }
 
   Map<String, Object?> _safeDispatchMetadataFor(E event) {
-    return <String, Object?>{
-      ..._safeControllerMetadata(),
-      ..._safeMetadataFor(event),
-    };
+    return <String, Object?>{..._safeControllerMetadata(), ..._safeMetadataFor(event)};
   }
 
   Map<String, Object?> _safeControllerMetadata() {
@@ -483,10 +456,7 @@ abstract class EventControllerNotifier<S, E> extends AsyncNotifier<S>
     }
   }
 
-  Map<String, Object?> _safeStateMetadata({
-    required AsyncValue<S> previous,
-    required AsyncValue<S> next,
-  }) {
+  Map<String, Object?> _safeStateMetadata({required AsyncValue<S> previous, required AsyncValue<S> next}) {
     try {
       return stateMetadata(previous: previous, next: next);
     } catch (_) {
@@ -520,10 +490,7 @@ final class _DispatchObservation<S> {
 /// Dispatch helper for providers and other non-widget Riverpod code.
 extension RefEventDispatcherX on Ref {
   /// Reads [provider]'s notifier and dispatches [event].
-  Future<void> dispatch<N extends EventControllerNotifier<S, E>, S, E>(
-    AsyncNotifierProvider<N, S> provider,
-    E event,
-  ) {
+  Future<void> dispatch<N extends EventControllerNotifier<S, E>, S, E>(AsyncNotifierProvider<N, S> provider, E event) {
     return read(provider.notifier).dispatch(event);
   }
 }
@@ -531,10 +498,7 @@ extension RefEventDispatcherX on Ref {
 /// Dispatch helper for widgets.
 extension WidgetRefEventDispatcherX on WidgetRef {
   /// Reads [provider]'s notifier and dispatches [event].
-  Future<void> dispatch<N extends EventControllerNotifier<S, E>, S, E>(
-    AsyncNotifierProvider<N, S> provider,
-    E event,
-  ) {
+  Future<void> dispatch<N extends EventControllerNotifier<S, E>, S, E>(AsyncNotifierProvider<N, S> provider, E event) {
     return read(provider.notifier).dispatch(event);
   }
 }

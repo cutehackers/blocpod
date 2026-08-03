@@ -42,10 +42,7 @@ void main() {
           traceId: 'trace-ab12',
           spanId: 'span-cd34',
           parentSpanId: 'span-parent',
-          attributes: const <String, Object?>{
-            'phase': 'state.transition',
-            'hasChanged': true,
-          },
+          attributes: const <String, Object?>{'phase': 'state.transition', 'hasChanged': true},
         ),
       );
 
@@ -62,11 +59,7 @@ void main() {
 
     test('omits absent optional sections and null trace members', () {
       final withoutOptional = encoder.encode(
-        BlocpodLogEntry(
-          level: BlocpodLogLevel.debug,
-          message: 'created',
-          timestamp: DateTime.utc(2026, 8, 3),
-        ),
+        BlocpodLogEntry(level: BlocpodLogLevel.debug, message: 'created', timestamp: DateTime.utc(2026, 8, 3)),
       );
       final partialTrace =
           jsonDecode(
@@ -91,25 +84,15 @@ void main() {
       expect(partialTrace['trace'], <String, Object?>{'spanId': 'span-only'});
     });
 
-    test(
-      'round-trips quotes, backslashes, and line breaks through JSON escaping',
-      () {
-        const message = 'quoted "value" at C:\\temp\nnext line';
-        final encoded = encoder.encode(
-          BlocpodLogEntry(
-            level: BlocpodLogLevel.info,
-            message: message,
-            timestamp: DateTime.utc(2026, 8, 3),
-          ),
-        );
+    test('round-trips quotes, backslashes, and line breaks through JSON escaping', () {
+      const message = 'quoted "value" at C:\\temp\nnext line';
+      final encoded = encoder.encode(
+        BlocpodLogEntry(level: BlocpodLogLevel.info, message: message, timestamp: DateTime.utc(2026, 8, 3)),
+      );
 
-        expect(encoded.contains('\n'), isFalse);
-        expect(
-          (jsonDecode(encoded) as Map<String, Object?>)['message'],
-          message,
-        );
-      },
-    );
+      expect(encoded.contains('\n'), isFalse);
+      expect((jsonDecode(encoded) as Map<String, Object?>)['message'], message);
+    });
 
     test('rejects non-positive maxDepth in checked builds', () {
       expect(() => JsonLogEncoder(maxDepth: 0), throwsAssertionError);
@@ -127,19 +110,10 @@ void main() {
                       'when': DateTime.parse('2026-08-03T09:00:00+09:00'),
                       'elapsed': const Duration(microseconds: 1250),
                       'phaseEnum': ExamplePhase.started,
-                      'numbers': <Object?>[
-                        1,
-                        1.5,
-                        double.nan,
-                        double.infinity,
-                        double.negativeInfinity,
-                      ],
+                      'numbers': <Object?>[1, 1.5, double.nan, double.infinity, double.negativeInfinity],
                       'password': 'kept-by-contract',
                       'odd': ThrowingText(),
-                      'oddKeys': <Object?, Object?>{
-                        1: 'numeric-key',
-                        '1': 'string-key-wins',
-                      },
+                      'oddKeys': <Object?, Object?>{1: 'numeric-key', '1': 'string-key-wins'},
                     },
                   ),
                 ),
@@ -150,13 +124,7 @@ void main() {
       expect(attributes['when'], '2026-08-03T00:00:00.000Z');
       expect(attributes['elapsed'], 1250);
       expect(attributes['phaseEnum'], 'started');
-      expect(attributes['numbers'], <Object?>[
-        1,
-        1.5,
-        'NaN',
-        'Infinity',
-        '-Infinity',
-      ]);
+      expect(attributes['numbers'], <Object?>[1, 1.5, 'NaN', 'Infinity', '-Infinity']);
       expect(attributes['password'], 'kept-by-contract');
       expect(attributes['odd'], '<ThrowingText>');
       expect(attributes['oddKeys'], <String, Object?>{'1': 'string-key-wins'});
@@ -211,10 +179,9 @@ void main() {
               )
               as Map<String, Object?>;
 
-      expect(
-        (decoded['attributes'] as Map<String, Object?>)['root'],
-        <String, Object?>{'child': '<max-depth-exceeded>'},
-      );
+      expect((decoded['attributes'] as Map<String, Object?>)['root'], <String, Object?>{
+        'child': '<max-depth-exceeded>',
+      });
     });
 
     test('encodes errors and stack traces as a structured object', () {

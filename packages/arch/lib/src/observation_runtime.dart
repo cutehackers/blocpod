@@ -19,11 +19,7 @@ final class ObservationRuntime {
     );
   }
 
-  static void publish(
-    ObservationOccurrence occurrence,
-    EventLogger? logger,
-    EventLogRecord record,
-  ) {
+  static void publish(ObservationOccurrence occurrence, EventLogger? logger, EventLogRecord record) {
     if (logger == null) {
       cancel(occurrence);
       return;
@@ -72,11 +68,7 @@ final class ObservationRuntime {
 }
 
 final class ObservationOccurrence {
-  ObservationOccurrence._({
-    required this.occurredAt,
-    required this.recordSequence,
-    required this._slot,
-  });
+  ObservationOccurrence._({required this.occurredAt, required this.recordSequence, required this._slot});
 
   final DateTime occurredAt;
   final int recordSequence;

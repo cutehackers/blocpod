@@ -1,12 +1,7 @@
 import 'dart:collection';
 
 Object? normalizeLogValue(Object? value, {required int maxDepth}) {
-  return _normalizeLogValue(
-    value,
-    maxDepth: maxDepth,
-    depth: 1,
-    activePath: HashSet<Object>.identity(),
-  );
+  return _normalizeLogValue(value, maxDepth: maxDepth, depth: 1, activePath: HashSet<Object>.identity());
 }
 
 String safeLogText(Object value) {
@@ -92,14 +87,7 @@ Object? _normalizeLogValue(
     activePath.add(value);
     try {
       return value
-          .map(
-            (element) => _normalizeLogValue(
-              element,
-              maxDepth: maxDepth,
-              depth: depth + 1,
-              activePath: activePath,
-            ),
-          )
+          .map((element) => _normalizeLogValue(element, maxDepth: maxDepth, depth: depth + 1, activePath: activePath))
           .toList(growable: false);
     } finally {
       activePath.remove(value);

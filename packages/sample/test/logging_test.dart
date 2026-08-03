@@ -14,10 +14,7 @@ void main() {
     final container = ProviderContainer(
       overrides: [
         eventLoggerProvider.overrideWithValue(
-          BlocpodEventLogger(
-            sink,
-            formatter: const PrettyEventLogRecordFormatter(),
-          ),
+          BlocpodEventLogger(sink, formatter: const PrettyEventLogRecordFormatter()),
         ),
       ],
     );
@@ -38,10 +35,7 @@ void main() {
       ),
     );
     expect(sink.entries.map((entry) => entry.level), everyElement(BlocpodLogLevel.info));
-    expect(
-      sink.entries.last.attributes,
-      containsPair('controllerName', 'SampleCounterController'),
-    );
+    expect(sink.entries.last.attributes, containsPair('controllerName', 'SampleCounterController'));
     expect(sink.entries.last.sequence, isNotNull);
   });
 
@@ -50,10 +44,7 @@ void main() {
     final container = ProviderContainer(
       overrides: [
         eventLoggerProvider.overrideWithValue(
-          BlocpodEventLogger(
-            sink,
-            formatter: const PrettyEventLogRecordFormatter(),
-          ),
+          BlocpodEventLogger(sink, formatter: const PrettyEventLogRecordFormatter()),
         ),
       ],
     );
@@ -62,9 +53,7 @@ void main() {
     await container.read(counterProvider.notifier).dispatch(const CounterIncremented(1));
 
     final lines = sink.entries.map(const JsonLogEncoder().encode).toList();
-    final decoded = lines
-        .map((line) => jsonDecode(line) as Map<String, Object?>)
-        .toList();
+    final decoded = lines.map((line) => jsonDecode(line) as Map<String, Object?>).toList();
 
     expect(lines, everyElement(isNot(contains('\n'))));
     expect(decoded, everyElement(containsPair('schema', 'blocpod.log')));
@@ -78,23 +67,11 @@ void main() {
   });
 
   test('encoder failure does not change the dispatch result', () async {
-    final sink = DebugPrintLogSink(
-      encoder: const ThrowingEncoder(),
-      debugPrintOverride: (message, {wrapWidth}) {},
-    );
-    final container = ProviderContainer(
-      overrides: [
-        eventLoggerProvider.overrideWithValue(BlocpodEventLogger(sink)),
-      ],
-    );
+    final sink = DebugPrintLogSink(encoder: const ThrowingEncoder(), debugPrintOverride: (message, {wrapWidth}) {});
+    final container = ProviderContainer(overrides: [eventLoggerProvider.overrideWithValue(BlocpodEventLogger(sink))]);
     addTearDown(container.dispose);
 
-    await expectLater(
-      container
-          .read(counterProvider.notifier)
-          .dispatch(const CounterIncremented(1)),
-      completes,
-    );
+    await expectLater(container.read(counterProvider.notifier).dispatch(const CounterIncremented(1)), completes);
     expect(container.read(counterProvider).value, 1);
   });
 }

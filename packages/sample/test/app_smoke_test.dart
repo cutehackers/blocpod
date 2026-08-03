@@ -17,10 +17,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('Count: 2'), findsOneWidget);
-    expect(
-      _textContaining('✅ SampleCounterController · CounterIncremented completed'),
-      findsAtLeastNWidgets(1),
-    );
+    expect(_textContaining('✅ SampleCounterController · CounterIncremented completed'), findsAtLeastNWidgets(1));
 
     await tester.ensureVisible(find.widgetWithText(FilledButton, 'Load todos'));
     await tester.tap(find.widgetWithText(FilledButton, 'Load todos'));

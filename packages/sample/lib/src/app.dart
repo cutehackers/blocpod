@@ -24,10 +24,7 @@ final class _BlocpodSampleAppState extends State<BlocpodSampleApp> {
       overrides: [
         inMemoryLogSinkProvider.overrideWithValue(_sink),
         eventLoggerProvider.overrideWithValue(
-          BlocpodEventLogger(
-            _sink,
-            formatter: const PrettyEventLogRecordFormatter(),
-          ),
+          BlocpodEventLogger(_sink, formatter: const PrettyEventLogRecordFormatter()),
         ),
       ],
       child: const MaterialApp(title: 'Blocpod Sample', home: SampleHome()),
@@ -227,10 +224,7 @@ final class EventLogPanel extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               for (final entry in entries)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(entry.message),
-                ),
+                Padding(padding: const EdgeInsets.only(bottom: 8), child: Text(entry.message)),
             ],
           );
         },

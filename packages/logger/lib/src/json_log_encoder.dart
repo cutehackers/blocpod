@@ -23,25 +23,18 @@ final class JsonLogEncoder implements BlocpodLogEncoder {
         if (entry.sequence != null) 'sequence': entry.sequence,
         'level': entry.level.name,
         'message': entry.message,
-        if (entry.traceId != null ||
-            entry.spanId != null ||
-            entry.parentSpanId != null)
+        if (entry.traceId != null || entry.spanId != null || entry.parentSpanId != null)
           'trace': <String, Object?>{
             if (entry.traceId != null) 'traceId': entry.traceId,
             if (entry.spanId != null) 'spanId': entry.spanId,
             if (entry.parentSpanId != null) 'parentSpanId': entry.parentSpanId,
           },
-        if (entry.attributes.isNotEmpty)
-          'attributes': _normalizeAttributes(
-            entry.attributes,
-            maxDepth: maxDepth,
-          ),
+        if (entry.attributes.isNotEmpty) 'attributes': _normalizeAttributes(entry.attributes, maxDepth: maxDepth),
         if (entry.error != null || entry.stackTrace != null)
           'error': <String, Object?>{
             if (entry.error != null) 'type': entry.error.runtimeType.toString(),
             if (entry.error != null) 'message': safeLogText(entry.error!),
-            if (entry.stackTrace != null)
-              'stackTrace': safeLogText(entry.stackTrace!),
+            if (entry.stackTrace != null) 'stackTrace': safeLogText(entry.stackTrace!),
           },
       });
     } catch (_) {
@@ -57,10 +50,7 @@ final class JsonLogEncoder implements BlocpodLogEncoder {
   }
 }
 
-Map<String, Object?> _normalizeAttributes(
-  Map<String, Object?> attributes, {
-  required int maxDepth,
-}) {
+Map<String, Object?> _normalizeAttributes(Map<String, Object?> attributes, {required int maxDepth}) {
   final normalized = <String, Object?>{};
   for (final MapEntry(:key, :value) in attributes.entries) {
     normalized[key] = normalizeLogValue(value, maxDepth: maxDepth);

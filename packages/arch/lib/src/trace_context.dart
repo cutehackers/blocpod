@@ -41,18 +41,8 @@ final class TraceContext {
   }
 
   /// Runs [body] with [context] available as [current].
-  static R run<R>(
-    TraceContext context,
-    R Function() body, {
-    Map<Object?, Object?> zoneValues = const {},
-  }) {
-    return runZoned(
-      body,
-      zoneValues: <Object?, Object?>{
-        ...zoneValues,
-        _traceContextZoneKey: context,
-      },
-    );
+  static R run<R>(TraceContext context, R Function() body, {Map<Object?, Object?> zoneValues = const {}}) {
+    return runZoned(body, zoneValues: <Object?, Object?>{...zoneValues, _traceContextZoneKey: context});
   }
 
   /// Creates a child span in this trace.
@@ -71,10 +61,7 @@ final class TraceContext {
 
   static String _nextId(String prefix) {
     _sequence += 1;
-    final timestamp = DateTime.now()
-        .toUtc()
-        .microsecondsSinceEpoch
-        .toRadixString(36);
+    final timestamp = DateTime.now().toUtc().microsecondsSinceEpoch.toRadixString(36);
     final sequence = _sequence.toRadixString(36);
     final random = _random.nextInt(0x3fffffff).toRadixString(36);
 
@@ -97,12 +84,6 @@ final class TraceContext {
   }
 }
 
-R runWithoutTraceContext<R>(
-  R Function() body, {
-  Map<Object?, Object?> zoneValues = const {},
-}) {
-  return runZoned(
-    body,
-    zoneValues: <Object?, Object?>{...zoneValues, _traceContextZoneKey: null},
-  );
+R runWithoutTraceContext<R>(R Function() body, {Map<Object?, Object?> zoneValues = const {}}) {
+  return runZoned(body, zoneValues: <Object?, Object?>{...zoneValues, _traceContextZoneKey: null});
 }

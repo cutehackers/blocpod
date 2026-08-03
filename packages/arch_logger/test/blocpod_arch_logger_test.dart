@@ -205,10 +205,7 @@ void main() {
       final entry = sink.entries.single;
       expect(record.traceContext.parentSpanId, isNull);
       expect(entry.parentSpanId, isNull);
-      expect(entry.attributes['eventMetadata'], <String, Object?>{
-        'parentSpanId': 'fake',
-        'feature': 'counter',
-      });
+      expect(entry.attributes['eventMetadata'], <String, Object?>{'parentSpanId': 'fake', 'feature': 'counter'});
     });
 
     test('maps transition records with transition index and state summaries', () {
@@ -292,10 +289,8 @@ void main() {
       const expectedMessages = <EventLogPhase, String>{
         EventLogPhase.controllerCreated: '🟢 CounterController created',
         EventLogPhase.initialStateEstablished: '🔵 CounterController established data(ready)',
-        EventLogPhase.eventStarted:
-            '🟡 CounterController · IncrementEvent started from loading(count:0)',
-        EventLogPhase.transition:
-            '✨ CounterController · IncrementEvent transition[1] loading(count:0) → data(count:1)',
+        EventLogPhase.eventStarted: '🟡 CounterController · IncrementEvent started from loading(count:0)',
+        EventLogPhase.transition: '✨ CounterController · IncrementEvent transition[1] loading(count:0) → data(count:1)',
         EventLogPhase.eventCompleted:
             '✅ CounterController · IncrementEvent completed loading(count:0) → data(count:1) in 12ms',
         EventLogPhase.eventFailed:
@@ -329,9 +324,7 @@ void main() {
       ];
 
       for (final entry in expectedDurations) {
-        final result = formatter.format(
-          prettyCompletedRecordWithDuration(entry.duration),
-        );
+        final result = formatter.format(prettyCompletedRecordWithDuration(entry.duration));
         expect(result.message, endsWith('in ${entry.text}'), reason: 'duration ${entry.duration}');
         expect(result.message.contains('\n'), isFalse, reason: 'duration ${entry.duration}');
         expect(result.message.contains('\r'), isFalse, reason: 'duration ${entry.duration}');
@@ -418,14 +411,8 @@ void main() {
         startedAt: DateTime.utc(2026, 8, 3, 10),
       );
 
-      expect(
-        formatter.format(startedFallback).message,
-        '🟡 CounterController · unknownEvent started from unknown',
-      );
-      expect(
-        formatter.format(establishedFallback).message,
-        '🔵 CounterController established unknown',
-      );
+      expect(formatter.format(startedFallback).message, '🟡 CounterController · unknownEvent started from unknown');
+      expect(formatter.format(establishedFallback).message, '🔵 CounterController established unknown');
     });
 
     test('pretty formatter keeps metadata structured for sinks without appending summaries to the message', () {
@@ -511,20 +498,23 @@ void main() {
 
       expect(entry.sequence, isNull);
       expect(entry.traceId, record.traceContext.traceId);
-      expect(entry.attributes.keys, orderedEquals(<String>[
-        'phase',
-        'controllerName',
-        'eventName',
-        'durationMicros',
-        'transitionIndex',
-        'previousStateKind',
-        'nextStateKind',
-        'hasChanged',
-        'previousStateLabel',
-        'nextStateLabel',
-        'eventMetadata',
-        'stateMetadata',
-      ]));
+      expect(
+        entry.attributes.keys,
+        orderedEquals(<String>[
+          'phase',
+          'controllerName',
+          'eventName',
+          'durationMicros',
+          'transitionIndex',
+          'previousStateKind',
+          'nextStateKind',
+          'hasChanged',
+          'previousStateLabel',
+          'nextStateLabel',
+          'eventMetadata',
+          'stateMetadata',
+        ]),
+      );
 
       final sink = MemoryLogSink()..write(entry);
       expect(sink.entries.single, same(entry));
@@ -629,10 +619,9 @@ EventLogRecord prettyRecordFor(EventLogPhase phase) {
     controllerName: 'CounterController',
     eventName: isEvent ? 'IncrementEvent' : null,
     startedAt: startedAt,
-    duration:
-        phase == EventLogPhase.eventCompleted || phase == EventLogPhase.eventFailed
-            ? const Duration(milliseconds: 12)
-            : null,
+    duration: phase == EventLogPhase.eventCompleted || phase == EventLogPhase.eventFailed
+        ? const Duration(milliseconds: 12)
+        : null,
     transitionIndex: phase == EventLogPhase.transition ? 1 : null,
     previousStateKind: isEvent ? AsyncValueKind.loading : null,
     previousStateLabel: isEvent ? 'count:0' : null,

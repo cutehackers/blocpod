@@ -7,10 +7,9 @@ void main() {
     const forbiddenImport =
         'package:blocpod_'
         'arch/';
-    final dartFiles = Directory('lib')
-        .listSync(recursive: true)
-        .whereType<File>()
-        .where((file) => file.path.endsWith('.dart'));
+    final dartFiles = Directory(
+      'lib',
+    ).listSync(recursive: true).whereType<File>().where((file) => file.path.endsWith('.dart'));
 
     final offenders = <String>[];
     for (final file in dartFiles) {
@@ -32,10 +31,7 @@ void main() {
     ];
     final files = <File>[
       File('pubspec.yaml'),
-      ...Directory('lib')
-          .listSync(recursive: true)
-          .whereType<File>()
-          .where((file) => file.path.endsWith('.dart')),
+      ...Directory('lib').listSync(recursive: true).whereType<File>().where((file) => file.path.endsWith('.dart')),
     ];
 
     final offenders = <String>[];

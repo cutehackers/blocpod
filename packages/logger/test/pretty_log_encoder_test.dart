@@ -10,17 +10,13 @@ void main() {
   group('PrettyLogEncoder', () {
     final entry = BlocpodLogEntry(
       level: BlocpodLogLevel.info,
-      message:
-          '✨ CounterController · IncrementEvent transition[1] data(count:0) → data(count:1)',
+      message: '✨ CounterController · IncrementEvent transition[1] data(count:0) → data(count:1)',
       timestamp: DateTime.parse('2026-08-03T19:00:01.001+09:00'),
       sequence: 104,
       traceId: 'trace-ab12',
       spanId: 'span-cd34',
       parentSpanId: 'span-parent',
-      attributes: const <String, Object?>{
-        'phase': 'state.transition',
-        'transitionIndex': 1,
-      },
+      attributes: const <String, Object?>{'phase': 'state.transition', 'transitionIndex': 1},
     );
 
     test('compact prints only time, level, and message', () {
@@ -62,18 +58,14 @@ void main() {
     test('verbose safely renders cycles and throwing objects', () {
       final cycle = <Object?>[];
       cycle.add(cycle);
-      final output = const PrettyLogEncoder(detail: PrettyLogDetail.verbose)
-          .encode(
-            BlocpodLogEntry(
-              level: BlocpodLogLevel.info,
-              message: 'safe values',
-              timestamp: DateTime.utc(2026, 8, 3),
-              attributes: <String, Object?>{
-                'cycle': cycle,
-                'odd': ThrowingText(),
-              },
-            ),
-          );
+      final output = const PrettyLogEncoder(detail: PrettyLogDetail.verbose).encode(
+        BlocpodLogEntry(
+          level: BlocpodLogLevel.info,
+          message: 'safe values',
+          timestamp: DateTime.utc(2026, 8, 3),
+          attributes: <String, Object?>{'cycle': cycle, 'odd': ThrowingText()},
+        ),
+      );
 
       expect(output, contains('<cycle>'));
       expect(output, contains('<ThrowingText>'));
@@ -85,11 +77,7 @@ void main() {
       expect(compact, isNot(contains('trace=')));
       expect(compact, isNot(contains('attributes=')));
 
-      final plain = BlocpodLogEntry(
-        level: BlocpodLogLevel.info,
-        message: 'plain',
-        timestamp: DateTime.utc(2026, 8, 3),
-      );
+      final plain = BlocpodLogEntry(level: BlocpodLogLevel.info, message: 'plain', timestamp: DateTime.utc(2026, 8, 3));
       expect(
         const PrettyLogEncoder(detail: PrettyLogDetail.verbose).encode(plain),
         const PrettyLogEncoder().encode(plain),

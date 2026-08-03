@@ -7,11 +7,9 @@ import 'blocpod_log_sink.dart';
 
 /// Log sink that writes formatted entries through Flutter's [debugPrint].
 final class DebugPrintLogSink implements BlocpodLogSink {
-  DebugPrintLogSink({
-    BlocpodLogEncoder encoder = const JsonLogEncoder(),
-    DebugPrintCallback? debugPrintOverride,
-  })  : _encoder = encoder,
-        _debugPrint = debugPrintOverride ?? debugPrint;
+  DebugPrintLogSink({BlocpodLogEncoder encoder = const JsonLogEncoder(), DebugPrintCallback? debugPrintOverride})
+    : _encoder = encoder,
+      _debugPrint = debugPrintOverride ?? debugPrint;
 
   final BlocpodLogEncoder _encoder;
   final DebugPrintCallback _debugPrint;

@@ -86,19 +86,12 @@ final class EventDispatchContext {
 
   /// Runs [body] with [context] and its trace context available in the zone.
   static R run<R>(EventDispatchContext context, R Function() body) {
-    return TraceContext.run(
-      context.traceContext,
-      body,
-      zoneValues: {_eventDispatchContextZoneKey: context},
-    );
+    return TraceContext.run(context.traceContext, body, zoneValues: {_eventDispatchContextZoneKey: context});
   }
 
   /// Runs [body] with dispatch and trace contexts masked from the zone.
   static R runWithoutContext<R>(R Function() body) {
-    return runWithoutTraceContext(
-      body,
-      zoneValues: {_eventDispatchContextZoneKey: null},
-    );
+    return runWithoutTraceContext(body, zoneValues: {_eventDispatchContextZoneKey: null});
   }
 
   /// Returns the next one-based transition index for this dispatch.

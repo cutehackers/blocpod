@@ -65,13 +65,7 @@ void main() {
       },
     );
 
-    sink.write(
-      BlocpodLogEntry(
-        level: BlocpodLogLevel.info,
-        message: 'created',
-        timestamp: DateTime.utc(2026, 8, 3),
-      ),
-    );
+    sink.write(BlocpodLogEntry(level: BlocpodLogLevel.info, message: 'created', timestamp: DateTime.utc(2026, 8, 3)));
 
     expect(messages, hasLength(1));
     expect(jsonDecode(messages.single), containsPair('schema', 'blocpod.log'));
@@ -86,23 +80,13 @@ void main() {
       },
     );
 
-    sink.write(
-      BlocpodLogEntry(
-        level: BlocpodLogLevel.info,
-        message: 'created',
-        timestamp: DateTime.utc(2026, 8, 3),
-      ),
-    );
+    sink.write(BlocpodLogEntry(level: BlocpodLogLevel.info, message: 'created', timestamp: DateTime.utc(2026, 8, 3)));
 
     expect(messages, <String>['encoded:created']);
   });
 
   test('formatBlocpodLogEntry delegates to the default JSON encoder', () {
-    final entry = BlocpodLogEntry(
-      level: BlocpodLogLevel.info,
-      message: 'created',
-      timestamp: DateTime.utc(2026, 8, 3),
-    );
+    final entry = BlocpodLogEntry(level: BlocpodLogLevel.info, message: 'created', timestamp: DateTime.utc(2026, 8, 3));
 
     expect(formatBlocpodLogEntry(entry), const JsonLogEncoder().encode(entry));
   });
