@@ -338,6 +338,44 @@ void main() {
       }
     });
 
+    test('pretty formatter omits the duration suffix when completed or failed records have no duration', () {
+      const formatter = PrettyEventLogRecordFormatter();
+      final completed = EventLogRecord(
+        phase: EventLogPhase.eventCompleted,
+        traceContext: TraceContext.root(startedAt: DateTime.utc(2026, 8, 3, 10)),
+        controllerName: 'CounterController',
+        eventName: 'IncrementEvent',
+        startedAt: DateTime.utc(2026, 8, 3, 10),
+        previousStateKind: AsyncValueKind.loading,
+        previousStateLabel: 'count:0',
+        nextStateKind: AsyncValueKind.data,
+        nextStateLabel: 'count:1',
+      );
+      final failed = EventLogRecord(
+        phase: EventLogPhase.eventFailed,
+        traceContext: TraceContext.root(startedAt: DateTime.utc(2026, 8, 3, 10)),
+        controllerName: 'CounterController',
+        eventName: 'IncrementEvent',
+        startedAt: DateTime.utc(2026, 8, 3, 10),
+        previousStateKind: AsyncValueKind.loading,
+        previousStateLabel: 'count:0',
+        nextStateKind: AsyncValueKind.data,
+        nextStateLabel: 'count:1',
+        error: StateError('failed'),
+      );
+
+      expect(
+        formatter.format(completed).message,
+        '✅ CounterController · IncrementEvent completed loading(count:0) → data(count:1)',
+      );
+      expect(
+        formatter.format(failed).message,
+        '🔴 CounterController · IncrementEvent failed loading(count:0) → data(count:1)',
+      );
+      expect(formatter.format(completed).message, isNot(contains('in unknown')));
+      expect(formatter.format(failed).message, isNot(contains('in unknown')));
+    });
+
     test('pretty formatter preserves dedicated fields and attributes while replacing only message', () {
       final startedAt = DateTime.utc(2026, 7, 31, 9);
       final record = EventLogRecord(

@@ -40,8 +40,8 @@ final class PrettyEventLogRecordFormatter implements BlocpodEventLogFormatter {
   }
 
   String _eventFinishedMessage(String emoji, String verb, EventLogRecord record) {
-    final durationText = record.duration == null ? 'unknown' : _formatDuration(record.duration!);
-    return '$emoji ${record.controllerName} · ${record.eventName ?? 'unknownEvent'} $verb ${_stateChangeText(record)} in $durationText';
+    final durationSuffix = record.duration == null ? '' : ' in ${_formatDuration(record.duration!)}';
+    return '$emoji ${record.controllerName} · ${record.eventName ?? 'unknownEvent'} $verb ${_stateChangeText(record)}$durationSuffix';
   }
 
   String _stateText(AsyncValueKind? kind, String? label) {
