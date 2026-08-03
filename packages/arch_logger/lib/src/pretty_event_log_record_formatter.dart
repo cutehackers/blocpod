@@ -3,24 +3,6 @@ import 'package:blocpod_logger/blocpod_logger.dart';
 
 import 'event_log_record_formatter.dart';
 
-const Set<String> _prettyReservedMetadataKeys = <String>{
-  'recordSequence',
-  'phase',
-  'traceId',
-  'spanId',
-  'parentSpanId',
-  'controllerName',
-  'eventName',
-  'durationMicros',
-  'transitionIndex',
-  'previousStateKind',
-  'nextStateKind',
-  'hasChanged',
-  'previousStateLabel',
-  'nextStateLabel',
-  'stateMetadata',
-};
-
 /// Formats Blocpod records for local, human-readable transition debugging.
 final class PrettyEventLogRecordFormatter implements BlocpodEventLogFormatter {
   const PrettyEventLogRecordFormatter();
@@ -32,7 +14,11 @@ final class PrettyEventLogRecordFormatter implements BlocpodEventLogFormatter {
       level: compact.level,
       message: _messageFor(record),
       timestamp: compact.timestamp,
-      metadata: compact.metadata,
+      sequence: compact.sequence,
+      traceId: compact.traceId,
+      spanId: compact.spanId,
+      parentSpanId: compact.parentSpanId,
+      attributes: compact.attributes,
       error: compact.error,
       stackTrace: compact.stackTrace,
     );
@@ -122,19 +108,8 @@ final class PrettyEventLogRecordFormatter implements BlocpodEventLogFormatter {
   List<String> _safeMetadataKeys(Map<String, Object?> metadata) {
     final keys = <String>[];
     for (final entry in metadata.entries) {
-      if (_prettyReservedMetadataKeys.contains(entry.key) || _isSensitiveKey(entry.key)) {
-        continue;
-      }
       keys.add(entry.key);
     }
     return keys;
-  }
-
-  bool _isSensitiveKey(Object? key) {
-    final normalized = key.toString().toLowerCase();
-    return normalized.contains('token') ||
-        normalized.contains('secret') ||
-        normalized.contains('credential') ||
-        normalized.contains('password');
   }
 }

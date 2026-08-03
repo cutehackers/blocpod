@@ -1,24 +1,6 @@
 import 'package:blocpod_arch/blocpod_arch.dart';
 import 'package:blocpod_logger/blocpod_logger.dart';
 
-const Set<String> _reservedMetadataKeys = <String>{
-  'recordSequence',
-  'phase',
-  'traceId',
-  'spanId',
-  'parentSpanId',
-  'controllerName',
-  'eventName',
-  'durationMicros',
-  'transitionIndex',
-  'previousStateKind',
-  'nextStateKind',
-  'hasChanged',
-  'previousStateLabel',
-  'nextStateLabel',
-  'stateMetadata',
-};
-
 /// Converts Blocpod architecture event records into generic log entries.
 abstract interface class BlocpodEventLogFormatter {
   /// Formats [record].
@@ -48,14 +30,12 @@ final class EventLogRecordFormatter implements BlocpodEventLogFormatter {
       level: record.error == null ? BlocpodLogLevel.info : BlocpodLogLevel.error,
       message: _messageFor(record),
       timestamp: record.occurredAt,
-      metadata: <String, Object?>{
-        for (final entry in record.metadata.entries)
-          if (!_reservedMetadataKeys.contains(entry.key)) entry.key: entry.value,
-        if (record.recordSequence != null) 'recordSequence': record.recordSequence,
+      sequence: record.recordSequence,
+      traceId: record.traceContext.traceId,
+      spanId: record.traceContext.spanId,
+      parentSpanId: record.traceContext.parentSpanId,
+      attributes: <String, Object?>{
         'phase': eventLogPhaseLabel(record.phase),
-        'traceId': record.traceContext.traceId,
-        'spanId': record.traceContext.spanId,
-        if (record.traceContext.parentSpanId != null) 'parentSpanId': record.traceContext.parentSpanId,
         'controllerName': record.controllerName,
         if (record.eventName != null) 'eventName': record.eventName,
         if (record.duration != null) 'durationMicros': record.duration!.inMicroseconds,
@@ -65,6 +45,7 @@ final class EventLogRecordFormatter implements BlocpodEventLogFormatter {
         if (record.hasChanged != null) 'hasChanged': record.hasChanged,
         if (record.previousStateLabel != null) 'previousStateLabel': record.previousStateLabel,
         if (record.nextStateLabel != null) 'nextStateLabel': record.nextStateLabel,
+        if (record.metadata.isNotEmpty) 'eventMetadata': record.metadata,
         if (record.stateMetadata.isNotEmpty) 'stateMetadata': record.stateMetadata,
       },
       error: record.error,
