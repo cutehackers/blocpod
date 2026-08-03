@@ -7,15 +7,44 @@ void main() {
     const forbiddenImport =
         'package:blocpod_'
         'arch/';
-    final dartFiles = Directory(
-      'lib',
-    ).listSync(recursive: true).whereType<File>().where((file) => file.path.endsWith('.dart'));
+    final dartFiles = Directory('lib')
+        .listSync(recursive: true)
+        .whereType<File>()
+        .where((file) => file.path.endsWith('.dart'));
 
     final offenders = <String>[];
     for (final file in dartFiles) {
       final source = file.readAsStringSync();
       if (source.contains(forbiddenImport)) {
         offenders.add(file.path);
+      }
+    }
+
+    expect(offenders, isEmpty);
+  });
+
+  test('blocpod_logger has no external logger SDK dependency', () {
+    const forbiddenExternalLoggers = <String>[
+      'package:talker/',
+      'package:logging/',
+      'package:sentry/',
+      'package:firebase_crashlytics/',
+    ];
+    final files = <File>[
+      File('pubspec.yaml'),
+      ...Directory('lib')
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((file) => file.path.endsWith('.dart')),
+    ];
+
+    final offenders = <String>[];
+    for (final file in files) {
+      final source = file.readAsStringSync();
+      for (final dependency in forbiddenExternalLoggers) {
+        if (source.contains(dependency)) {
+          offenders.add('${file.path}: $dependency');
+        }
       }
     }
 

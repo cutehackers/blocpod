@@ -5,6 +5,9 @@
 - Formatter timestamps now use `EventLogRecord.occurredAt`, and structured
   metadata includes the reserved `recordSequence` occurrence order when
   present.
+- Raised the minimum `blocpod_logger` dependency constraint to `^0.2.0`.
+- Documented the `BlocpodLogEntry.attributes` migration, dedicated
+  sequence/trace fields, and application-owned sink adapter boundary.
 - Documented compatibility with Blocpod's event-local dispatch outcomes and
   synchronous, neutral-context, non-reentrant FIFO logger delivery.
 
